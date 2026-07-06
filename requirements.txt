@@ -1,0 +1,16 @@
+# IPD — CCTV gender analytics (no age)
+opencv-python-headless>=4.8
+opencv-contrib-python-headless>=4.8
+ultralytics>=8.1
+torch>=2.1
+torchvision>=0.16
+transformers>=4.40
+pillow>=10.0
+numpy>=1.24
+pyyaml>=6.0
+matplotlib>=3.7
+pytest>=7.4
+
+# Training only (not needed for inference)
+h5py>=3.10
+scipy>=1.11
