@@ -1,0 +1,37 @@
+flowchart TB
+    %% Styling
+    classDef input fill:#D2E5FF,stroke:#2B78E4,stroke-width:2px;
+    classDef process fill:#F9F9F9,stroke:#CCCCCC,stroke-width:1px;
+    classDef model fill:#E2F0D9,stroke:#385723,stroke-width:2px;
+    classDef layer fill:#FFF2CC,stroke:#D6B656,stroke-width:1px;
+    classDef head fill:#FCE4D6,stroke:#C65911,stroke-width:2px;
+    classDef output fill:#E1D5E7,stroke:#9673A6,stroke-width:2px;
+
+    subgraph InferencePipeline ["1. End-to-End Inference Pipeline"]
+        direction LR
+        Frame["Input Video Frame"]:::input --> Detection["YOLOv8 Person Detection"]:::process
+        Detection --> Crop["Crop Person Bounding Box"]:::process
+        Crop --> Preprocess["Preprocess Crop<br>(Resize to 224x224, Normalize)"]:::process
+        Preprocess --> Classifier["GenderClassifier Model"]:::model
+        Classifier --> Annotate["Annotate Frame<br>(Colored Box & Label)"]:::output
+    end
+
+    subgraph ModelArchitecture ["2. GenderClassifier Model Architecture"]
+        direction TB
+        InputTensor["Input Tensor<br>(Batch Size, 3, 224, 224)"]:::input --> ViT["ViT Backbone<br>(google/vit-base-patch16-224)"]:::model
+        
+        subgraph ViTDetails ["ViT Backbone Internal Flow"]
+            direction TB
+            Patchify["Patch & Position Embedding<br>(Split to 16x16 patches, Project to 768, Add CLS token)"]:::layer --> Encoder["12x Transformer Encoder Layers<br>(Multi-Head Self-Attention + MLP)"]:::layer
+            Encoder --> CLS["Extract CLS Token Output<br>(1 x 768)"]:::layer
+            CLS --> Pooler["Pooler Layer<br>(Dense Layer + Tanh Activation)"]:::layer
+        end
+
+        ViT -.-> Patchify
+        Pooler -.-> PoolerOutput["pooler_output<br>(Batch Size, 768)"]:::layer
+        
+        PoolerOutput --> ClassifierHead["Classifier Head<br>(nn.Linear: 768 -> 2)"]:::head
+        ClassifierHead --> Logits["Raw Logits<br>(Batch Size, 2)"]:::output
+        Logits --> Softmax["Softmax Activation"]:::output
+        Softmax --> FinalOutput["Gender Prediction<br>(female: 0, male: 1)"]:::output
+    end
