@@ -1,4 +1,4 @@
-# Two-stage fine-tuning guide
+# Two-stage fine-tuning guide (Gender) and Age Attribute Model Guide
 
 This document explains the **what** and **why** of two-stage fine-tuning. The **how** is in `training_pipeline.ipynb` - open it in Colab and run the cells.
 
