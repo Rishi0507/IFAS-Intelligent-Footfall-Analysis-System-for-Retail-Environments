@@ -1,4 +1,4 @@
-# Footfall Analysis: Gender Model Training
+# Footfall Analysis: Gender Model Training & Age Classification
 
 This repository contains the training pipeline to fine-tune a Vision Transformer (ViT) model for gender classification as part of a larger Footfall Analysis system. The system leverages a two-stage training approach to achieve high classification accuracy on pedestrian images.
 
@@ -18,9 +18,23 @@ graph TD
     H --> I[Inference Pipeline: Detection + Classification]
 ```
 
-### Why ViT over CLIP for classification?
+The age classification pipeline takes a different approach: it replicates the original PETA benchmark methodology (Deng et al., 2014) using classical computer vision, region based color and texture histograms as features, with one independent SVM per age attribute (one vs rest). There is no fine-tuning stage; the model is trained once on PETA and serialized directly.
+
+```mermaid
+graph TD
+    A[PETA Dataset] --> B[Feature Extraction: Region-based Color + LBP Texture Histograms]
+    B --> C[Per-Attribute SVM Training: One-vs-Rest, Histogram Intersection + RBF]
+    C -->|Serialize| D(classifiers.pkl)
+    D --> E[Inference Pipeline: Detection + Classification]
+```
+
+### Why ViT over CLIP for classification for Gender Classification?
 - **Vision-Only Focus**: CLIP is a vision-language model. Fine-tuning it for a binary gender head discards the text encoder, reducing a large multi-modal architecture to a simple classifier. 
 - **Efficiency and Specialization**: ViT acts as a pure, high-performance vision backbone. It is better suited for fine-tuning on structural pedestrian attributes.
+
+### Why classical color and texture features with SVMs for Age Classification?
+- **Faithful Reproduction**: The age model replicates the documented PETA benchmark methodology exactly, region-based color and texture histograms as features, one histogram-intersection-kernel SVM per attribute (one vs rest), evaluated with per-attribute mean Accuracy (mA), so results stay directly comparable to the published baseline instead of a deep learning approach.
+- **No CNNs, No Ensembling**: The pipeline deliberately avoids deep learning and ensembling, using classical computer vision features and per-attribute SVMs, selected by grid search over a histogram-intersection kernel and an RBF kernel.
 
 ---
 
@@ -28,6 +42,7 @@ graph TD
 
 - **Architecture Diagrams**: For detailed flowcharts of the inference pipeline and internal model structure, see the [Architecture Overview](file:///e:/projects/Footfall-Analysis/docs/architecture/README.md).
 - **Fine-Tuning Guide**: For a detailed explanation of tuning stages, learning rates, and dataset configuration, see [training.md](file:///e:/projects/Footfall-Analysis/docs/training.md).
+- **Age Model Guide**: For the classical computer vision pipeline used for age classification (feature extraction, per-attribute SVMs), see the Age Attribute Model section in [training.md](file:///e:/projects/Footfall-Analysis/docs/training.md) and the `age_classifier_v3.ipynb` notebook.
 
 ---
 
@@ -37,7 +52,8 @@ graph TD
 ├── docs/
 │   ├── architecture/
 │   │   ├── README.md           # Architecture diagrams overview and explanation
-│   │   └── gender_model_architecture.mmd # Gender model architecture diagram (Mermaid)
+│   │   ├── gender_model_architecture.mmd # Gender model architecture diagram (Mermaid)
+│   │   └── age_model_architecture.mmd    # Age model architecture diagram (Mermaid)
 │   └── training.md             # Detailed guide explaining stages and tuning strategies
 ├── src/
 │   └── training/
@@ -54,6 +70,7 @@ graph TD
 ├── train_stage1.ipynb          # Notebook for Stage 1 base training
 ├── train_stage2.ipynb          # Notebook for Stage 2 target fine-tuning
 ├── test_model.ipynb            # Notebook for evaluating checkpoint on images/videos
+├── age_classifier_v3.ipynb     # Notebook for training and evaluating the age attribute model (classical CV + SVM)
 ├── requirements.txt            # Python dependencies
 └── README.md                   # Project documentation
 ```
@@ -69,6 +86,7 @@ This repository contains three main notebooks to execute the workflow:
 | `train_stage1.ipynb` | Train on PETA dataset. Push the best checkpoint to the Hugging Face Hub. | Once (or during major retraining runs). |
 | `train_stage2.ipynb` | Load the Stage 1 checkpoint from the Hugging Face Hub. Fine-tune on your specific local domain data. Push the updated checkpoint back to the Hub. | Whenever new labeled target data is collected. |
 | `test_model.ipynb` | Load the final Stage 2 checkpoint from the Hugging Face Hub. Test the model performance on images and videos. | Every time you need to evaluate or verify model changes. |
+| `age_classifier_v3.ipynb` | Extract region-based color and texture histogram features from PETA, train one SVM per age attribute (one vs rest), evaluate with per-attribute mean Accuracy (mA), and test on a video via person detection + crop classification. | Once (or during major retraining runs). |
 
 ---
 
@@ -104,6 +122,21 @@ This stage adapts the pre-trained Stage 1 model to your specific domain (such as
    - **Learning Rate**: 1e-6 (one-tenth of Stage 1).
    - **Duration**: 5 epochs.
 
+### Age Attribute Model: Classical CV + Per-Attribute SVMs
+This model classifies pedestrians into four age buckets (`Age16-30`, `Age31-45`, `Age46-60`, `AgeAbove61`) by replicating the original PETA paper baseline. There are no linear probe or full fine-tuning phases, it is a single-stage classical pipeline trained once on PETA.
+
+1. **Feature Extraction**:
+   - Each image is split into horizontal body regions.
+   - Per region: 16-bin RGB and HSV color histograms plus a uniform LBP texture histogram (radii 1, 2, 3), all L1-normalized.
+   - Regions are concatenated into one feature vector per image.
+
+2. **Per-Attribute SVM Training**:
+   - One independent SVM is trained per age attribute (one vs rest).
+   - Both a histogram-intersection kernel and an RBF kernel are grid searched over `C` and `gamma`, and the best configuration per attribute is chosen using validation mA.
+   - Evaluated on the held-out PETA test split with per-attribute mean Accuracy (mA), achieving an average mA of roughly 0.835.
+
+The best classifiers per attribute are serialized directly to `classifiers.pkl` (not pushed to the Hugging Face Hub).
+
 ---
 
 ## Dataset Layout
@@ -124,11 +157,14 @@ data/
         └── ...
 ```
 
+The same PETA dataset is also used to train the age model, using the `personalLess30`, `personalLess45`, `personalLess60`, and `personalLarger60` attributes (mapped to `Age16-30`, `Age31-45`, `Age46-60`, and `AgeAbove61` respectively; `personalLess15` is dropped since it does not fit any of these buckets).
+
 ### Dataset Summary
 
 | Dataset | Sample Count | Label Source |
 | :--- | :--- | :--- |
 | PETA | ~19,000 | `personalMale` attributes |
+| PETA (age attributes) | ~14,000 | `personalLess30` / `personalLess45` / `personalLess60` / `personalLarger60` attributes |
 | Local User Data | Variable | Hand-labeled by organizing into folders |
 
 ---
@@ -159,6 +195,13 @@ If you already have a trained checkpoint uploaded to Hugging Face:
 3. Upload your labeled dataset under `data/user/male/` and `data/user/female/`.
 4. Run all cells to fine-tune the model and push the new checkpoint to your target Hugging Face repository.
 
+### 4. Running the Age Classifier
+1. Open the `age_classifier_v3.ipynb` notebook.
+2. Mount Google Drive and set `PETA_ROOT` to your extracted PETA dataset (skip the mount step if running locally).
+3. Run all cells to extract features, train one SVM per age attribute, and evaluate on the held-out test split using per-attribute mean Accuracy (mA).
+4. Optionally upload a video to test detection plus age classification end to end; the notebook writes an annotated `output_video.mp4`.
+5. The trained classifiers are saved to `classifiers.pkl`.
+
 ---
 
 ## Model Serialization and Checkpoints
@@ -186,3 +229,6 @@ from google.colab import drive
 drive.mount('/content/drive')
 ```
 Saved checkpoints are stored in `/content/drive/MyDrive/IPD_checkpoints/`.
+
+### Age Model Classifiers
+The age model's classifiers are much smaller than the ViT checkpoints and are saved as a pickled dictionary of per-attribute SVMs (`classifiers.pkl`, roughly 79 MB, about 35 MB zipped). They can be shared the same way as the gender checkpoints, via the Hugging Face Hub, Google Drive, or a direct pickle transfer.
