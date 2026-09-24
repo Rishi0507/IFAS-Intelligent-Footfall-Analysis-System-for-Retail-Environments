@@ -42,6 +42,7 @@ graph TD
 
 - **Architecture Diagrams**: For detailed flowcharts of the inference pipeline and internal model structure, see the [Architecture Overview](file:///e:/projects/Footfall-Analysis/docs/architecture/README.md).
 - **Fine-Tuning Guide**: For a detailed explanation of tuning stages, learning rates, and dataset configuration, see [training.md](file:///e:/projects/Footfall-Analysis/docs/training.md).
+- **Dashboard & Inference Guide**: For the end-to-end pipeline (detection, tracking, the analytics schema) and the dashboard, see [dashboard.md](docs/dashboard.md).
 - **Age Model Guide**: For the classical computer vision pipeline used for age classification (feature extraction, per-attribute SVMs), see the Age Attribute Model section in [training.md](file:///e:/projects/Footfall-Analysis/docs/training.md) and the `age_classifier_v3.ipynb` notebook.
 
 ---
@@ -55,7 +56,15 @@ graph TD
 │   │   ├── gender_model_architecture.mmd # Gender model architecture diagram (Mermaid)
 │   │   └── age_model_architecture.mmd    # Age model architecture diagram (Mermaid)
 │   └── training.md             # Detailed guide explaining stages and tuning strategies
+├── app/
+│   ├── server.py               # Dashboard server (serves the UI, runs the pipeline on upload)
+│   └── static/                 # The dashboard itself (HTML + CSS + vanilla-JS SVG charts)
 ├── src/
+│   ├── inference/
+│   │   ├── pipeline.py         # Video -> annotated MP4 + analytics.json
+│   │   ├── models.py           # GenderModel (ViT) and AgeModel (histograms + SVMs) wrappers
+│   │   ├── tracker.py          # IoU tracker: detections -> people
+│   │   └── analytics.py        # Tracks -> the analytics document the dashboard reads
 │   └── training/
 │       ├── __init__.py
 │       ├── datasets.py         # PyTorch Dataset definitions for PETA and stage-2 user data
@@ -64,9 +73,11 @@ graph TD
 │       └── transforms.py       # Data augmentation and preprocessing transforms
 ├── tests/
 │   ├── __init__.py
-│   └── test_training.py        # Unit tests for training components
+│   ├── test_training.py        # Unit tests for training components
+│   └── test_inference.py       # Unit tests for tracking and analytics
 ├── scripts/
-│   └── download_datasets.md    # Instructions and links to download baseline datasets
+│   ├── download_datasets.md    # Instructions and links to download baseline datasets
+│   └── generate_demo_run.py    # Synthesises a sample run so the dashboard opens without weights
 ├── train_stage1.ipynb          # Notebook for Stage 1 base training
 ├── train_stage2.ipynb          # Notebook for Stage 2 target fine-tuning
 ├── test_model.ipynb            # Notebook for evaluating checkpoint on images/videos
@@ -201,6 +212,45 @@ If you already have a trained checkpoint uploaded to Hugging Face:
 3. Run all cells to extract features, train one SVM per age attribute, and evaluate on the held-out test split using per-attribute mean Accuracy (mA).
 4. Optionally upload a video to test detection plus age classification end to end; the notebook writes an annotated `output_video.mp4`.
 5. The trained classifiers are saved to `classifiers.pkl`.
+
+---
+
+## Dashboard
+
+The notebooks train and spot-check the models; the dashboard is where the output
+becomes readable. A video is run through detection, tracking and both
+classifiers, producing an annotated MP4 and an `analytics.json` that the UI
+renders: footfall over time, occupancy, the age × gender cross-tab, dwell and
+engagement tiers, a position density map, per-model confidence, and a per-visitor
+log with CSV export. Light and dark themes; no chart library or CDN.
+
+```bash
+pip install -r requirements.txt
+
+# See the dashboard immediately, with a synthetic sample run (no weights needed)
+python scripts/generate_demo_run.py
+python -m app.server                     # http://127.0.0.1:8000
+
+# Process a real video
+python -m src.inference.pipeline     --video store_entrance.mp4 --out outputs/runs/store     --gender-repo abhshkp/footfall-analysis-vit-stage1     --age-bundle models/age
+```
+
+A **Store insights** section turns the run into business observations (footfall
+rate, busiest stretch, stopping power, who visits, busiest area) and compares
+every recording **daily, weekly and monthly** across five metrics. Aggregation
+is per observed hour at a named site and camera, so recordings of different
+lengths compare fairly; generated sample runs are excluded from every aggregate
+unless explicitly included. `scripts/process_folder.py` processes a folder of
+recordings in one command, which is how the history gets built.
+
+The dashboard has two views, toggled in the header: **Simple** (plain-language
+summary and headline numbers, for whoever runs the shop) and **Detailed**
+(filters, cross-tabs, model confidence, per-visitor log).
+
+Age classification is optional and needs a bundle exported from
+`age_classifier_v3.ipynb` first - see [docs/dashboard.md](docs/dashboard.md),
+which also covers the full flag reference, the analytics schema and the known
+limitations.
 
 ---
 
