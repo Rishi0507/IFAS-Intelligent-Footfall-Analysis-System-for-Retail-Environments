@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from .analytics import build_analytics
-from .tracker import IoUTracker
+from .tracker import IoUTracker, iou, overlap_of_smaller
 from .trends import insights
 
 # Same hues the dashboard uses, so the video and the charts agree.
@@ -40,11 +40,27 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
                   min_track_frames=3, max_frames=None, progress=None,
                   vote_every_sec=0.4, max_votes=12, cache_dir=None, source_name=None,
                   captured_at=None, site=None, camera=None,
-                  detector=None, gender_model=None, age_model=None):
+                  track_conf=0.25, rejoin_sec=8.0, weak_conf=0.10, max_checks=4,
+                  verifier_weights="yolov8m.pt", verify_sizes=(640, 960), verify_conf=0.25,
+                  detector=None, gender_model=None, age_model=None, verifier=None):
     """Run the pipeline over one video.
 
     `detector`, `gender_model` and `age_model` accept already-constructed
     objects; leave them None to build them from the weight arguments.
+
+    Detections are read at three levels of confidence:
+
+    * `det_conf` and up starts a person outright.
+    * `track_conf` and up may re-join a person the detector lost, for up to
+      `rejoin_sec` seconds.
+    * `weak_conf` and up may extend someone already being followed, or open a
+      tentative track. A tentative track is a hunch: it only becomes a person
+      if a later clear detection confirms it, or if a second, larger detector
+      agrees (`verifier_weights`, asked at most `max_checks` times per hunch).
+      The larger model is slow, which is why it is only consulted about
+      hunches and never run on every frame. Pass `verifier_weights=None` to
+      do without it, or set `weak_conf` equal to `track_conf` to turn hunches
+      off altogether.
     """
     import cv2
     from PIL import Image
@@ -64,9 +80,14 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         # Shared cache, not the run directory: a 340 MB checkpoint should be
         # downloaded once, not once per run.
         cache = Path(cache_dir) if cache_dir else Path(__file__).resolve().parents[2] / "models" / "hf"
-        say(stage="downloading checkpoint", pct=0.0)
-        gender_model = GenderModel.from_hub(gender_repo, cache / gender_repo.replace("/", "__"),
-                                            device=device)
+        local = cache / gender_repo.replace("/", "__")
+        if (local / "pytorch_model.bin").exists() and (local / "config.json").exists():
+            # Already downloaded: load it without touching the network.
+            gender_model = GenderModel(local, device=device)
+            gender_model.source = gender_repo
+        else:
+            say(stage="downloading checkpoint", pct=0.0)
+            gender_model = GenderModel.from_hub(gender_repo, local, device=device)
     elif gender_model is None and gender_ckpt:
         from .models import GenderModel
         gender_model = GenderModel(gender_ckpt, device=device)
@@ -90,9 +111,20 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
     if write_video:
         writer, codec = _open_writer(cv2, out_dir / "video.mp4", fps, width, height)
 
-    tracker = IoUTracker(iou_thresh=0.3, max_misses=int(fps))
+    low_conf = min(det_conf, track_conf)
+    floor_conf = min(low_conf, weak_conf)
+    tracker = IoUTracker(iou_thresh=0.3, max_misses=int(fps),
+                         rejoin_frames=int(round(rejoin_sec * fps)),
+                         new_track_conf=det_conf, rejoin_conf=low_conf,
+                         tentative_conf=floor_conf if floor_conf < low_conf else None,
+                         frame_size=(width, height))
     vote_gap = max(stride, int(round(vote_every_sec * fps)))
-    occupancy = {}
+    check_gap = max(stride, int(round(fps)))          # ask about a hunch once a second at most
+    n_checks = 0
+    rejected = []                                     # spots the verifier has ruled out
+    if verifier is None and verifier_weights in (None, "", "none", detector_weights):
+        verifier = False                              # no second opinion available
+    sampled = []
     frame_area = float(width * height)
     frame_idx = 0
     t0 = time.time()
@@ -104,7 +136,7 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
             break
 
         if frame_idx % stride == 0:
-            res = detector(frame, classes=[0], conf=det_conf, verbose=False)[0]
+            res = detector(frame, classes=[0], conf=floor_conf, verbose=False)[0]
             dets = []
             for box in res.boxes:
                 x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].tolist())
@@ -115,7 +147,35 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
                 dets.append(((x1, y1, x2, y2), float(box.conf[0])))
 
             matched = tracker.update(dets, frame_idx, frame_area)
-            occupancy[frame_idx] = len(dets)
+            sampled.append(frame_idx)
+
+            # A hunch that keeps turning up earns a closer look.
+            # A hunch that keeps turning up earns a second opinion.
+            unsure = [(t, b) for t, b, _c in matched
+                      if not t.confirmed and t.frames >= 8 and t.checks < max_checks
+                      and frame_idx - t.last_check_frame >= check_gap]
+            for t, b in unsure:                       # ...unless that spot was ruled out before
+                if t.checks == 0 and any(iou(b, r) >= 0.3 for r in rejected):
+                    t.checks = max_checks
+            unsure = [(t, b) for t, b in unsure if t.checks < max_checks]
+            agreed = {}
+            if unsure and verifier is not False:
+                if verifier is None:
+                    say(stage="loading second detector")
+                    verifier = _load_verifier(verifier_weights)
+                if verifier is not False:
+                    known = [b for t, b, _c in matched if t.confirmed]
+                    opinions = _second_opinion(verifier, frame, verify_sizes, verify_conf, known)
+                    n_checks += 1
+                    for t, b in unsure:
+                        t.checks += 1
+                        t.last_check_frame = frame_idx
+                        if any(overlap_of_smaller(o, b) >= 0.5 for o in opinions):
+                            agreed[id(t)] = tracker.confirm(t)    # may fold into a lost person's track
+                        elif t.checks >= max_checks:
+                            rejected.append(b)
+            matched = [(agreed.get(id(t), t), b, c) for t, b, c in matched]
+            matched = [m for m in matched if m[0].confirmed]
 
             due = [(t, b) for t, b, _c in matched if t.needs_vote(frame_idx, vote_gap, max_votes)]
             crops = [Image.fromarray(frame[b[1]:b[3], b[0]:b[2]][:, :, ::-1]) for _t, b in due]
@@ -129,7 +189,10 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
                 _draw(cv2, frame, matched)
 
         elif writer is not None:
-            _draw(cv2, frame, [(t, t.box, 0.0) for t in tracker.active])
+            # Only people seen on the last sampled frame, or a box lingers
+            # where someone was a second ago.
+            _draw(cv2, frame, [(t, t.box, 0.0) for t in tracker.active
+                               if t.misses == 0 and t.confirmed])
 
         if writer is not None:
             writer.write(frame)
@@ -176,7 +239,7 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         "fps": round(fps, 3),
         "width": width, "height": height,
         "frames_total": frame_idx,
-        "frames_sampled": len(occupancy),
+        "frames_sampled": len(sampled),
         "duration_sec": round(frame_idx / fps, 2) if fps else 0.0,
         "processing_sec": round(elapsed, 2),
         "processing_fps": round(frame_idx / elapsed, 2) if elapsed else 0.0,
@@ -188,6 +251,10 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
     config = {
         "detector": detector_weights,
         "det_conf": det_conf,
+        "track_conf": low_conf,
+        "weak_conf": floor_conf,
+        "verifier": verifier_weights if verifier not in (None, False) else None,
+        "rejoin_sec": rejoin_sec,
         "frame_stride": stride,
         "vote_every_sec": vote_every_sec,
         "max_votes_per_person": max_votes,
@@ -203,15 +270,56 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
                 "reported_avg_mA": 0.835, "source": config["age_model"]},
     }
 
-    doc = build_analytics(tracker.close(), meta, config, occupancy,
+    people = tracker.close()
+    # Occupancy is people present, counted once everything is known: someone
+    # hidden behind a shelf for a moment is still in the room, and a person
+    # confirmed late was there from their first sighting.
+    counted = [t for t in people if t.frames >= min_track_frames]
+    occupancy = {f: sum(1 for t in counted if t.first_frame <= f <= t.last_frame) for f in sampled}
+    doc = build_analytics(people, meta, config, occupancy,
                           model_card=model_card, bin_sec=bin_sec,
                           min_frames=min_track_frames)
+    doc["kpis"]["tracks_rejoined"] = tracker.rejoined
+    doc["kpis"]["hunches_checked"] = n_checks
+    doc["kpis"]["hunches_dropped"] = tracker.unconfirmed
     # Stored, not computed in the browser: any consumer of the file gets them.
     doc["insights"] = insights(doc)
     with open(out_dir / "analytics.json", "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
     say(stage="done", frame=frame_idx, total=n_frames, pct=100.0)
     return doc
+
+
+def _load_verifier(weights):
+    """The larger detector, or False if it cannot be had (no network on first
+    use, say). Without it hunches are simply never confirmed."""
+    try:
+        from ultralytics import YOLO
+        return YOLO(weights)
+    except Exception as exc:                          # noqa: BLE001 - optional component
+        print(f"second detector unavailable ({type(exc).__name__}); carrying on without it")
+        return False
+
+
+def _second_opinion(verifier, frame, sizes, conf, known=()):
+    """Person boxes a larger detector finds in this frame.
+
+    The fast detector scores a person behind glass, or small and far away, at
+    0.1 - the same as a poster or a stack of boxes. A larger model tells them
+    apart. It is run at more than one input size because no single size finds
+    everyone: the small one is better on dark, low-contrast people, the large
+    one on people who are tiny in the frame. Boxes lying on someone already
+    confirmed are left out, so a hunch next to a real person cannot borrow
+    that person's box.
+    """
+    found = []
+    for size in sizes:
+        res = verifier(frame, classes=[0], conf=conf, imgsz=size, verbose=False)[0]
+        for b in res.boxes:
+            box = tuple(b.xyxy[0].tolist())
+            if not any(overlap_of_smaller(box, k) >= 0.5 for k in known):
+                found.append(box)
+    return found
 
 
 def _open_writer(cv2, path, fps, width, height):
@@ -282,7 +390,8 @@ def _draw(cv2, frame, matched):
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
         parts = [f"#{track.id}"]
         if label:
-            parts.append(f"{label} {conf:.2f}")
+            # A question mark while the votes are still close: the label can flip.
+            parts.append(f"{label}{'?' if conf < 0.7 else ''} {conf:.2f}")
         if age:
             parts.append(age)
         text = "  ".join(parts)
@@ -301,6 +410,15 @@ def main():
     p.add_argument("--age-bundle", default=None, help="directory with classifiers.pkl")
     p.add_argument("--detector", default="yolov8n.pt")
     p.add_argument("--det-conf", type=float, default=0.4)
+    p.add_argument("--track-conf", type=float, default=0.25,
+                   help="weaker detections may extend a tracked person, never start one")
+    p.add_argument("--rejoin-sec", type=float, default=8.0,
+                   help="how long a lost person can be picked up again; 0 turns it off")
+    p.add_argument("--weak-conf", type=float, default=0.10,
+                   help="weakest detection worth a second opinion; set it equal to "
+                        "--track-conf to turn hunches off")
+    p.add_argument("--verifier", default="yolov8m.pt",
+                   help="larger detector consulted about weak detections; 'none' to do without")
     p.add_argument("--stride", type=int, default=2, help="classify every Nth frame")
     p.add_argument("--bin-sec", type=float, default=5.0)
     p.add_argument("--min-track-frames", type=int, default=3)
@@ -326,6 +444,8 @@ def main():
             bin_sec=a.bin_sec, min_track_frames=a.min_track_frames,
             max_frames=a.max_frames, vote_every_sec=a.vote_every_sec,
             max_votes=a.max_votes, captured_at=a.captured_at,
+            track_conf=a.track_conf, rejoin_sec=a.rejoin_sec, weak_conf=a.weak_conf,
+            verifier_weights=a.verifier,
             site=a.site, camera=a.camera,
             progress=lambda **kw: print(f"  {kw.get('stage')}: {kw.get('pct')}%", end="\r"),
         )
