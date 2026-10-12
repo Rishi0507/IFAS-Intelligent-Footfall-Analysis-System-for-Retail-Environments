@@ -3,181 +3,367 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IFAS · Footfall Analytics</title>
+<title>IFAS Footfall Analytics</title>
+<link rel="preload" href="fonts/inter-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>📊</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%2315172e'/><path d='M9 22v-6M16 22V10M23 22v-9' stroke='%23ff9a62' stroke-width='3.2' stroke-linecap='round'/></svg>">
+<script>
+  // Before first paint, so a saved theme never flashes the other one.
+  try {
+    const t = localStorage.getItem('ifas-theme');
+    if (t) document.documentElement.dataset.theme = t;
+  } catch (e) { /* storage blocked: follow the OS */ }
+</script>
 </head>
-<body>
+<body data-mode="simple" data-view="overview">
+<canvas id="ambient" aria-hidden="true"></canvas>
 <div id="tip" role="status" aria-live="polite"></div>
+<a class="skip" href="#views">Skip to the dashboard</a>
 
-<div class="topbar">
-<header class="top">
-  <div class="brand">
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <rect x="1" y="1" width="20" height="20" rx="6" fill="var(--accent)" opacity=".12"/>
-      <path d="M6 15V9.5M11 15V6M16 15v-3.5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+<!-- ============================================================ top bar -->
+<header class="bar">
+  <a class="brand" href="#overview" aria-label="IFAS, back to the overview">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="10" fill="var(--accent)"/>
+      <path d="M9 22v-6M16 22V10M23 22v-9" stroke="var(--accent-ink)" stroke-width="3" stroke-linecap="round"/>
     </svg>
-    <div>
-      <b>IFAS</b> <span>Footfall Analytics</span>
-    </div>
-  </div>
+    <b>IFAS</b>
+  </a>
 
-  <span class="badge demo" id="run-badge" hidden><i class="dot"></i><span id="run-badge-text">Sample data</span></span>
-
-  <div class="spacer"></div>
-
-  <label class="fgroup" style="gap:6px">
-    <span style="color:var(--muted);font-size:12px">Run</span>
-    <select id="run-select" aria-label="Select processed run"></select>
-  </label>
-  <div class="seg" role="group" aria-label="Detail level">
-    <button id="btn-simple" aria-pressed="true">Simple</button><button id="btn-full" aria-pressed="false">Detailed</button>
-  </div>
-  <button id="btn-process" class="primary">Process video</button>
-  <button id="btn-theme" class="icon" title="Toggle theme" aria-label="Toggle colour theme">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
-      <circle cx="8" cy="8" r="3.2"/><path d="M8 .8v1.8M8 13.4v1.8M15.2 8h-1.8M2.6 8H.8M13.1 13.1l-1.3-1.3M4.2 4.2 2.9 2.9M13.1 2.9l-1.3 1.3M4.2 11.8l-1.3 1.3" stroke-linecap="round"/>
-    </svg>
+  <button class="runpick" id="run-button" popovertarget="run-pop" aria-haspopup="listbox">
+    <span class="runpick-text">
+      <span class="runpick-name" id="run-name">Loading</span>
+      <span class="runpick-meta" id="run-meta"></span>
+    </span>
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 5.5 3.5 3.5 3.5-3.5"/></svg>
   </button>
+
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Dashboard views">
+    <span class="tab-glider" id="tab-glider" aria-hidden="true"></span>
+    <button role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.6"/></svg>
+      <span>Overview</span>
+    </button>
+    <button role="tab" id="tab-floor" data-view="floor" aria-controls="view-floor" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.6 16 6.4 9 10.2 2 6.4z"/><path d="m2 10 7 3.8 7-3.8"/></svg>
+      <span>Floor</span>
+    </button>
+    <button role="tab" id="tab-people" data-view="people" aria-controls="view-people" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="6.5" cy="6" r="2.6"/><path d="M1.8 15c.4-2.7 2.3-4.2 4.7-4.2s4.3 1.5 4.7 4.2"/><circle cx="12.8" cy="6.6" r="2"/><path d="M13 10.9c1.7.2 2.9 1.5 3.2 3.5"/></svg>
+      <span>People</span>
+    </button>
+    <button role="tab" id="tab-trends" data-view="trends" aria-controls="view-trends" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 13.5 7 9l3 2.6 5.5-6.1"/><path d="M11.5 5.5h4v4"/></svg>
+      <span>Trends</span>
+    </button>
+    <button role="tab" id="tab-video" data-view="video" aria-controls="view-video" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2.2" y="3.6" width="13.6" height="10.8" rx="2.6"/><path d="m7.6 6.9 3.6 2.1-3.6 2.1z"/></svg>
+      <span>Video</span>
+    </button>
+    <button role="tab" id="tab-log" data-view="log" aria-controls="view-log" aria-selected="false" tabindex="-1" data-adv>
+      <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6.5 5h9M6.5 9h9M6.5 13h9"/><circle cx="3" cy="5" r=".7"/><circle cx="3" cy="9" r=".7"/><circle cx="3" cy="13" r=".7"/></svg>
+      <span>Log</span>
+    </button>
+  </nav>
+
+  <div class="bar-actions">
+    <div class="seg" role="group" aria-label="How much detail to show">
+      <button id="btn-simple" aria-pressed="true">Simple</button><button id="btn-full" aria-pressed="false">Detailed</button>
+    </div>
+    <button id="btn-theme" class="icon" title="Switch between light and dark" aria-label="Switch between light and dark">
+      <svg class="i-sun" width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 1.6v1.7M9 14.7v1.7M16.4 9h-1.7M3.3 9H1.6M14.2 14.2 13 13M5 5 3.8 3.8M14.2 3.8 13 5M5 13l-1.2 1.2"/></svg>
+      <svg class="i-moon" width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 10.6A6.6 6.6 0 0 1 7.4 2.8a6.6 6.6 0 1 0 7.8 7.8z"/></svg>
+    </button>
+    <button id="btn-process" class="primary">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V2.6M4.8 5.6 8 2.4l3.2 3.2M2.6 10.4v1.4a1.8 1.8 0 0 0 1.8 1.8h7.2a1.8 1.8 0 0 0 1.8-1.8v-1.4"/></svg>
+      <span>Process video</span>
+    </button>
+  </div>
 </header>
 
-<nav class="sections" id="nav">
-  <a href="#overview" class="active">Overview</a>
-  <a href="#insights">Store insights</a>
-  <a href="#demographics">Demographics</a>
-  <a href="#engagement" data-adv>Dwell &amp; engagement</a>
-  <a href="#flow" data-adv>Flow &amp; space</a>
-  <a href="#video">Processed video</a>
-  <a href="#model" data-adv>Model &amp; confidence</a>
-  <a href="#log" data-adv>Visitor log</a>
-</nav>
+<div class="runpop glass" id="run-pop" popover>
+  <p class="runpop-title">Recordings</p>
+  <div class="runpop-list" id="run-list" role="listbox" aria-label="Processed recordings"></div>
 </div>
 
-<main>
-  <!-- ------------------------------------------------------- filters -->
-  <div class="filters" role="group" aria-label="Filters applied to every chart" data-adv>
-    <div class="fgroup"><label>Gender</label><span id="f-gender"></span></div>
-    <div class="fgroup"><label>Age</label><span id="f-age"></span></div>
-    <div class="fgroup"><label>Engagement</label><span id="f-tier"></span></div>
+<main id="views">
+  <!-- ----------------------------------------------------------- filters -->
+  <div class="filters glass" role="group" aria-label="Filters applied to every chart" data-adv>
+    <div class="fgroup"><span class="flabel">Gender</span><span id="f-gender" class="chips"></span></div>
+    <div class="fgroup"><span class="flabel">Age</span><span id="f-age" class="chips"></span></div>
+    <div class="fgroup"><span class="flabel">Engagement</span><span id="f-tier" class="chips"></span></div>
     <div class="fgroup">
-      <label for="f-conf">Min confidence</label>
+      <label class="flabel" for="f-conf">Confidence</label>
       <select id="f-conf">
         <option value="0">Any</option>
-        <option value="0.6">≥ 0.60</option>
-        <option value="0.75">≥ 0.75</option>
-        <option value="0.9">≥ 0.90</option>
+        <option value="0.6">0.60 and up</option>
+        <option value="0.75">0.75 and up</option>
+        <option value="0.9">0.90 and up</option>
       </select>
     </div>
     <div class="spacer"></div>
     <span class="count" id="f-count"></span>
-    <button id="f-reset">Reset</button>
+    <button id="f-reset" class="quiet">Clear filters</button>
   </div>
 
-  <!-- ------------------------------------------------------ overview -->
-  <section id="overview">
-    <div class="sec-head">
-      <h2>Overview</h2>
-      <p id="ov-sub"></p>
-    </div>
+  <!-- ========================================================== overview -->
+  <section class="view" id="view-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
+    <div class="hero">
+      <div class="stage-slot" id="slot-overview">
+        <!-- The one 3D stage. It lives here and moves into the Floor tab on demand. -->
+        <div class="stage" id="stage" data-mode="hero" data-layout="3d">
+          <div class="stage-canvas" id="stage-canvas" role="img" aria-label="3D floor showing where people stood and how they moved"></div>
+          <div class="stage-flat" id="c-heat" hidden></div>
+          <p class="stage-fallback" id="stage-fallback" hidden>3D needs WebGL, which this browser has switched off. The flat map shows the same data.</p>
 
-    <div class="card" data-simple id="summary-card" style="margin-bottom:14px">
-      <header><h3>What happened</h3></header>
-      <ul id="summary" class="summary"></ul>
-    </div>
+          <div class="stage-tools" id="stage-tools">
+            <div class="seg" role="group" aria-label="Camera">
+              <button data-layout="3d" aria-pressed="true">3D</button><button data-layout="top" aria-pressed="false">Top</button><button data-layout="flat" aria-pressed="false">Flat</button>
+            </div>
+            <div class="seg" role="group" aria-label="Colour people by" id="stage-colorby">
+              <button data-colorby="gender" aria-pressed="true">Gender</button><button data-colorby="age" aria-pressed="false">Age</button><button data-colorby="tier" aria-pressed="false">Stay</button>
+            </div>
+            <label class="switch"><input type="checkbox" id="chk-heat" checked><span>Heat</span></label>
+            <label class="switch"><input type="checkbox" id="chk-paths" checked><span>Paths</span></label>
+            <label class="switch" id="sw-frame" hidden><input type="checkbox" id="chk-frame"><span>Camera frame</span></label>
+          </div>
 
-    <div class="grid g-4">
-      <div class="card tile hero">
-        <div>
-          <div class="label">Unique visitors</div>
-          <div class="value" id="k-visitors">–</div>
-          <div class="note" id="k-visitors-note"></div>
-        </div>
-        <div id="k-spark" style="margin-top:10px"></div>
-      </div>
-      <div class="card tile">
-        <div>
-          <div class="label" id="peak-label">Peak occupancy</div>
-          <div class="value" id="k-peak">–</div>
-          <div class="note" id="k-peak-note"></div>
-        </div>
-        <div id="k-peak-spark" style="margin-top:10px"></div>
-      </div>
-      <div class="card tile">
-        <div>
-          <div class="label" id="dwell-label">Average dwell</div>
-          <div class="value" id="k-dwell">–</div>
-          <div class="note" id="k-dwell-note"></div>
-        </div>
-        <div id="k-dwell-spark" style="margin-top:10px"></div>
-      </div>
-      <div class="card tile">
-        <div>
-          <div class="label">Busiest interval</div>
-          <div class="value" id="k-rate">–</div>
-          <div class="note" id="k-rate-note"></div>
-        </div>
-        <div id="k-rate-spark" style="margin-top:10px"></div>
-      </div>
-    </div>
+          <div class="stage-legend" id="stage-legend"></div>
+          <p class="stage-hint" id="stage-hint">Drag to look around</p>
 
-    <div class="grid g-4" style="margin-top:14px">
-      <div class="card tile span-2">
-        <div class="label">Gender split</div>
-        <div id="k-gender-split"></div>
-        <div class="note" id="k-gender-note"></div>
+          <div class="stage-time glass" id="stage-time">
+            <button class="icon play" id="stage-play" aria-label="Replay the recording" title="Replay the recording">
+              <svg class="i-play" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.4 1.9v10.2a.6.6 0 0 0 .9.5l8.3-5.1a.6.6 0 0 0 0-1L4.3 1.4a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg>
+              <svg class="i-pause" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2.6" y="1.8" width="3.2" height="10.4" rx="1" fill="currentColor"/><rect x="8.2" y="1.8" width="3.2" height="10.4" rx="1" fill="currentColor"/></svg>
+            </button>
+            <div class="scrub">
+              <div class="scrub-bars" id="scrub-bars" aria-hidden="true"></div>
+              <input type="range" id="stage-scrub" min="0" max="1000" value="1000" step="1" aria-label="Time in the recording">
+            </div>
+            <span class="clock" id="stage-clock">0:00</span>
+          </div>
+        </div>
       </div>
-      <div class="card tile">
-        <div class="label">Largest segment</div>
-        <div class="value" id="k-segment" style="font-size:20px">–</div>
-        <div class="note" id="k-segment-note"></div>
-      </div>
-      <div class="card tile" data-adv>
-        <div class="label">Mean classifier confidence</div>
-        <div class="value" id="k-conf">–</div>
-        <div class="meter"><i id="k-conf-meter" style="background:var(--accent)"></i></div>
-        <div class="note" id="k-conf-note"></div>
+
+      <div class="hero-copy">
+        <h1 id="headline">Loading the recording</h1>
+        <p class="hero-meta"><span id="ov-sub"></span><span class="badge demo" id="run-badge" hidden><i class="dot"></i><span id="run-badge-text">Sample data</span></span></p>
+        <ul id="summary" class="summary"></ul>
+        <button class="link" id="open-floor">Explore the floor</button>
       </div>
     </div>
 
-    <div class="grid g-32" style="margin-top:14px">
+    <div class="grid g-4 tiles">
+      <div class="card tile">
+        <div class="label">People counted</div>
+        <div class="value" id="k-visitors">0</div>
+        <div class="note" id="k-visitors-note"></div>
+        <div class="spark" id="k-spark"></div>
+      </div>
+      <div class="card tile">
+        <div class="label" id="peak-label">Most at once</div>
+        <div class="value" id="k-peak">0</div>
+        <div class="note" id="k-peak-note"></div>
+        <div class="spark" id="k-peak-spark"></div>
+      </div>
+      <div class="card tile">
+        <div class="label" id="dwell-label">Typical visit</div>
+        <div class="value" id="k-dwell">0</div>
+        <div class="note" id="k-dwell-note"></div>
+        <div class="spark" id="k-dwell-spark"></div>
+      </div>
+      <div class="card tile">
+        <div class="label">Busiest stretch</div>
+        <div class="value" id="k-rate">0</div>
+        <div class="note" id="k-rate-note"></div>
+        <div class="spark" id="k-rate-spark"></div>
+      </div>
+    </div>
+
+    <div class="grid g-32">
       <div class="card">
-        <header><h3>Footfall over time</h3><div class="spacer"></div>
+        <header><h3>Arrivals over time</h3><div class="spacer"></div>
           <button class="toggle-table" data-table="c-footfall">Table</button></header>
-        <p class="sub">New visitors first seen in each interval, split by predicted gender.</p>
+        <p class="sub">People first seen in each stretch of the recording, split by gender.</p>
         <div id="c-footfall"></div>
         <div class="legend" id="l-footfall"></div>
       </div>
+      <div class="stack">
+        <div class="card tile">
+          <div class="label">Women and men</div>
+          <div id="k-gender-split"></div>
+          <div class="note" id="k-gender-note"></div>
+        </div>
+        <div class="card tile">
+          <div class="label">Biggest group</div>
+          <div class="value small" id="k-segment">None</div>
+          <div class="note" id="k-segment-note"></div>
+        </div>
+        <div class="card tile" data-adv>
+          <div class="label">Classifier confidence</div>
+          <div class="value small" id="k-conf">0</div>
+          <div class="meter"><i id="k-conf-meter"></i></div>
+          <div class="note" id="k-conf-note"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
       <div class="card">
-        <header><h3 id="occ-title">Occupancy</h3><div class="spacer"></div>
+        <header><h3 id="occ-title">How busy it was</h3><div class="spacer"></div>
           <button class="toggle-table" data-table="c-occupancy">Table</button></header>
-        <p class="sub" id="occ-sub">People simultaneously in frame. Click to seek the video.</p>
+        <p class="sub" id="occ-sub">How many people were in view at the same time.</p>
         <div id="c-occupancy"></div>
       </div>
     </div>
   </section>
 
-  <!-- ---------------------------------------------------- insights -->
-  <section id="insights">
-    <div class="sec-head"><h2>Store insights</h2>
-      <p id="insights-sub">What this footage says about your shop, and how it compares with your other recordings.</p></div>
+  <!-- ============================================================= floor -->
+  <section class="view" id="view-floor" role="tabpanel" aria-labelledby="tab-floor" tabindex="0" hidden>
+    <div class="sec-head">
+      <h2>Floor</h2>
+      <p>The camera frame laid flat. Columns rise where people spent time, and each line is one person's path. Drag the time bar to see who was where.</p>
+    </div>
+
+    <div class="stage-slot" id="slot-floor"></div>
+
+    <div class="grid g-3">
+      <div class="card">
+        <header><h3>Zones</h3></header>
+        <p class="sub">The frame split into three equal bands.</p>
+        <div class="table-wrap"><table id="t-zones"></table></div>
+      </div>
+      <div class="card" data-adv>
+        <header><h3>Where people came in</h3></header>
+        <p class="sub">The edge of the frame where each person was first seen.</p>
+        <div id="c-entry"></div>
+      </div>
+      <div class="card" data-adv>
+        <header><h3>How they moved</h3></header>
+        <p class="sub">Worked out from the first and last position of each path.</p>
+        <div id="c-flow"></div>
+      </div>
+    </div>
+
+    <div class="grid" data-adv>
+      <div class="card">
+        <header><h3>Age mix in each zone</h3></header>
+        <p class="sub">Share of each age group among the people seen in a zone.</p>
+        <div id="c-zoneage"></div>
+        <div class="legend" id="l-zoneage"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ people -->
+  <section class="view" id="view-people" role="tabpanel" aria-labelledby="tab-people" tabindex="0" hidden>
+    <div class="sec-head">
+      <h2 id="demo-title">Who came in</h2>
+      <p id="demo-sub">The mix of people the camera saw.</p>
+    </div>
+
+    <div class="grid g-32">
+      <div class="card skyline-card">
+        <header>
+          <h3 id="skyline-title">Age and gender together</h3><div class="spacer"></div>
+          <span class="seg" id="seg-skyline" role="group" aria-label="What the height shows">
+            <button data-metric="count" aria-pressed="true">People</button><button data-metric="dwell" aria-pressed="false">Time stayed</button>
+          </span>
+        </header>
+        <p class="sub" id="skyline-sub">Each block is one group. Taller means more people.</p>
+        <div class="skyline" id="c-skyline" role="img" aria-label="3D blocks comparing age groups for women and men"></div>
+        <div class="legend" id="l-skyline"></div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <header><h3 id="agemix-title">Age groups</h3><div class="spacer"></div>
+            <button class="toggle-table" data-table="c-age">Table</button></header>
+          <p class="sub" id="agemix-sub">Roughly how old your visitors were.</p>
+          <div id="c-age"></div>
+        </div>
+        <div class="card">
+          <header><h3 id="agegender-title">Age by gender</h3><div class="spacer"></div>
+            <button class="toggle-table" data-table="c-agegender">Table</button></header>
+          <p class="sub" id="agegender-sub">Which groups visit you most.</p>
+          <div id="c-agegender"></div>
+          <div class="legend" id="l-agegender"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" data-adv>
+      <div class="card">
+        <header><h3>Every group in detail</h3></header>
+        <p class="sub">Each gender and age combination in this recording, with how long it stayed and how sure the models were.</p>
+        <div class="table-wrap"><table id="t-segments"></table></div>
+      </div>
+    </div>
+
+    <div class="sec-head" data-adv>
+      <h2>How long they stayed</h2>
+      <p>Time in frame is the closest thing this system has to a measure of interest.</p>
+    </div>
+
+    <div class="grid g-3" data-adv>
+      <div class="card">
+        <header><h3>Length of stay</h3><div class="spacer"></div>
+          <button class="toggle-table" data-table="c-dwellhist">Table</button></header>
+        <p class="sub">Seconds in frame for each person.</p>
+        <div id="c-dwellhist"></div>
+      </div>
+      <div class="card">
+        <header><h3>Engagement tiers</h3><div class="spacer"></div>
+          <button class="toggle-table" data-table="c-tiers">Table</button></header>
+        <p class="sub">Passing is under 3 s, glancing under 10, browsing under 30, engaged under 60, and dwelling beyond that.</p>
+        <div id="c-tiers"></div>
+      </div>
+      <div class="card">
+        <header><h3>Average stay by age</h3><div class="spacer"></div>
+          <button class="toggle-table" data-table="c-dwellage">Table</button></header>
+        <p class="sub">Mean seconds in frame for each age group.</p>
+        <div id="c-dwellage"></div>
+      </div>
+    </div>
+
+    <div class="grid g-2" data-adv>
+      <div class="card">
+        <header><h3>Average stay by group</h3></header>
+        <p class="sub">Gender and age together, longest first. Empty groups are left out.</p>
+        <div id="c-dwellseg"></div>
+      </div>
+      <div class="card">
+        <header><h3>Engagement by gender</h3></header>
+        <p class="sub">Share of each gender's visitors in each tier.</p>
+        <div id="c-tiergender"></div>
+        <div class="legend" id="l-tiergender"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ trends -->
+  <section class="view" id="view-trends" role="tabpanel" aria-labelledby="tab-trends" tabindex="0" hidden>
+    <div class="sec-head">
+      <h2>Trends</h2>
+      <p id="insights-sub">What this footage says about your shop, and how it compares with your other recordings.</p>
+    </div>
 
     <div class="grid g-2">
       <div class="card">
         <header><h3>From this recording</h3></header>
-        <p class="sub">Measured, not predicted - each line comes from the people counted in this clip.</p>
+        <p class="sub">Measured from the people counted in this clip. Nothing here is a forecast.</p>
         <ul class="insights" id="insight-list"></ul>
       </div>
       <div class="card">
         <header><h3>Compared with your other recordings</h3><div class="spacer"></div>
-          <label class="badge" style="cursor:pointer"><input type="checkbox" id="chk-demo-trends" style="margin:0"> Include samples</label>
+          <label class="switch"><input type="checkbox" id="chk-demo-trends"><span>Include samples</span></label>
         </header>
-        <p class="sub" id="trend-coverage">Loading…</p>
+        <p class="sub" id="trend-coverage">Loading</p>
         <div id="trend-headline"></div>
-        <div id="c-trendline" style="margin-top:6px"></div>
+        <div id="c-trendline"></div>
       </div>
     </div>
 
-    <div class="grid" style="margin-top:14px">
+    <div class="grid">
       <div class="card">
         <header>
           <h3>Over time</h3>
@@ -186,14 +372,14 @@
             <button data-period="day" aria-pressed="false">Daily</button><button data-period="weekday" aria-pressed="true">Weekly</button><button data-period="month" aria-pressed="false">Monthly</button>
           </span>
         </header>
-        <p class="sub" id="period-sub">Every metric is per observed hour, so recordings of different lengths compare fairly.</p>
-        <div class="fgroup" style="margin-bottom:10px"><span id="seg-metric"></span></div>
+        <p class="sub" id="period-sub">Every number is per hour of footage watched, so recordings of different lengths compare fairly.</p>
+        <div class="chips" id="seg-metric"></div>
         <div id="c-period"></div>
-        <div class="table-wrap" style="margin-top:12px"><table id="t-period"></table></div>
+        <div class="table-wrap"><table id="t-period"></table></div>
       </div>
     </div>
 
-    <div class="grid g-2" style="margin-top:14px">
+    <div class="grid g-2">
       <div class="card">
         <header><h3>Busiest times of day</h3></header>
         <p class="sub">Visitors per hour, by the hour of day the camera was watching.</p>
@@ -207,163 +393,51 @@
       </div>
     </div>
 
-    <div class="grid" style="margin-top:14px" data-adv>
+    <div class="grid" data-adv>
       <div class="card">
         <header><h3>Every recording</h3></header>
-        <p class="sub">One row per processed video, newest last. <b>Sample</b> rows are generated data, not footage.</p>
+        <p class="sub">One row for each processed video, newest last. Rows marked Sample are generated data, not footage.</p>
         <div class="table-wrap"><table id="t-runs"></table></div>
       </div>
     </div>
   </section>
 
-  <!-- -------------------------------------------------- demographics -->
-  <section id="demographics">
-    <div class="sec-head"><h2 id="demo-title">Demographics</h2>
-      <p id="demo-sub">Everything the age and gender models emit, cross-tabulated.</p></div>
-
-    <div class="grid g-2">
-      <div class="card">
-        <header><h3 id="agemix-title">Age mix</h3><div class="spacer"></div>
-          <button class="toggle-table" data-table="c-age">Table</button></header>
-        <p class="sub" id="agemix-sub">Four PETA buckets. Click a bar to filter the whole dashboard.</p>
-        <div id="c-age"></div>
-      </div>
-      <div class="card">
-        <header><h3 id="agegender-title">Age by gender</h3><div class="spacer"></div>
-          <button class="toggle-table" data-table="c-agegender">Table</button></header>
-        <p class="sub" id="agegender-sub">Where the two models disagree about who your shoppers are.</p>
-        <div id="c-agegender"></div>
-        <div class="legend" id="l-agegender"></div>
-      </div>
+  <!-- ============================================================= video -->
+  <section class="view" id="view-video" role="tabpanel" aria-labelledby="tab-video" tabindex="0" hidden>
+    <div class="sec-head">
+      <h2>Video</h2>
+      <p id="video-sub">Your footage, with a box around each person the system found.</p>
     </div>
-
-    <div class="grid" style="margin-top:14px" data-adv>
-      <div class="card">
-        <header><h3>Segment breakdown</h3></header>
-        <p class="sub">Every gender × age combination the run produced, with its dwell and confidence profile.</p>
-        <div class="table-wrap"><table id="t-segments"></table></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- --------------------------------------------------- engagement -->
-  <section id="engagement" data-adv>
-    <div class="sec-head"><h2>Dwell &amp; engagement</h2>
-      <p>Time in frame, the closest proxy this pipeline has for shopper interest.</p></div>
-
-    <div class="grid g-3">
-      <div class="card">
-        <header><h3>Dwell distribution</h3><div class="spacer"></div>
-          <button class="toggle-table" data-table="c-dwellhist">Table</button></header>
-        <p class="sub">Seconds in frame per visitor.</p>
-        <div id="c-dwellhist"></div>
-      </div>
-      <div class="card">
-        <header><h3>Engagement tiers</h3><div class="spacer"></div>
-          <button class="toggle-table" data-table="c-tiers">Table</button></header>
-        <p class="sub">Passing &lt;3s · Glancing &lt;10s · Browsing &lt;30s · Engaged &lt;60s · Dwelling 60s+</p>
-        <div id="c-tiers"></div>
-      </div>
-      <div class="card">
-        <header><h3>Average dwell by age</h3><div class="spacer"></div>
-          <button class="toggle-table" data-table="c-dwellage">Table</button></header>
-        <p class="sub">Mean seconds in frame per age bucket.</p>
-        <div id="c-dwellage"></div>
-      </div>
-    </div>
-
-    <div class="grid g-2" style="margin-top:14px">
-      <div class="card">
-        <header><h3>Average dwell by segment</h3></header>
-        <p class="sub">Gender × age, ranked. Empty segments are omitted.</p>
-        <div id="c-dwellseg"></div>
-      </div>
-      <div class="card">
-        <header><h3>Engagement mix by gender</h3></header>
-        <p class="sub">Share of each gender's visitors in each tier.</p>
-        <div id="c-tiergender"></div>
-        <div class="legend" id="l-tiergender"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- --------------------------------------------------------- flow -->
-  <section id="flow" data-adv>
-    <div class="sec-head"><h2>Flow &amp; space</h2>
-      <p>Where people stood and how they moved through the frame.</p></div>
-
-    <div class="grid g-32">
-      <div class="card">
-        <header><h3>Position density</h3><div class="spacer"></div>
-          <label class="badge" style="cursor:pointer"><input type="checkbox" id="chk-paths" style="margin:0"> Trails</label>
-        </header>
-        <p class="sub">Time spent per cell across the whole frame, normalised to the busiest cell.</p>
-        <div id="c-heat"></div>
-        <div class="legend" id="l-heat" style="justify-content:flex-end"></div>
-      </div>
-      <div class="card">
-        <header><h3>Zones</h3></header>
-        <p class="sub">Frame split into equal left / centre / right bands.</p>
-        <div class="table-wrap"><table id="t-zones"></table></div>
-        <p class="sub" style="margin:16px 0 4px">Age mix per zone</p>
-        <div id="c-zoneage"></div>
-        <div class="legend" id="l-zoneage"></div>
-      </div>
-    </div>
-
-    <div class="grid g-2" style="margin-top:14px">
-      <div class="card">
-        <header><h3>Entry edge</h3></header>
-        <p class="sub">Where each visitor was first detected.</p>
-        <div id="c-entry"></div>
-      </div>
-      <div class="card">
-        <header><h3>Path type</h3></header>
-        <p class="sub">Derived from the first and last position of each track.</p>
-        <div id="c-flow"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- -------------------------------------------------------- video -->
-  <section id="video">
-    <div class="sec-head"><h2>Processed video</h2>
-      <p id="video-sub">The annotated output, with box colours matching the charts.</p></div>
 
     <div class="grid g-21">
       <div class="card">
-        <div class="video-wrap" id="video-wrap">
-          <div class="video-empty" id="video-empty">
-            <div>
-              <p style="margin:0 0 8px">No annotated video in this run.</p>
-              <p style="margin:0">Run the pipeline without <code>--no-video</code>, or use <b>Process video</b> above.</p>
-            </div>
-          </div>
-        </div>
+        <div class="video-wrap" id="video-wrap"></div>
         <div class="legend" id="l-video"></div>
       </div>
       <div class="card">
-        <header><h3>At the playhead</h3></header>
+        <header><h3>At this moment</h3></header>
         <p class="sub" id="video-time">0:00</p>
-        <div class="grid g-2" style="gap:10px">
-          <div class="tile"><div class="label">In frame</div><div class="value" id="v-count" style="font-size:22px">0</div></div>
-          <div class="tile"><div class="label">Session entries</div><div class="value" id="v-entries" style="font-size:22px">0</div></div>
+        <div class="grid g-2 mini">
+          <div class="tile"><div class="label">In view</div><div class="value small" id="v-count">0</div></div>
+          <div class="tile"><div class="label">Arrived so far</div><div class="value small" id="v-entries">0</div></div>
         </div>
-        <div id="v-split" style="margin-top:6px"></div>
-        <div id="v-ages" style="margin-top:10px"></div>
+        <div id="v-split"></div>
+        <div id="v-ages"></div>
       </div>
     </div>
   </section>
 
-  <!-- -------------------------------------------------------- model -->
-  <section id="model" data-adv>
-    <div class="sec-head"><h2>Model &amp; confidence</h2>
-      <p>How sure the two classifiers were, and what produced this run.</p></div>
+  <!-- =============================================================== log -->
+  <section class="view" id="view-log" role="tabpanel" aria-labelledby="tab-log" tabindex="0" hidden data-adv>
+    <div class="sec-head">
+      <h2>Log</h2>
+      <p>How sure the two classifiers were, what produced this run, and the record behind every chart.</p>
+    </div>
 
     <div class="grid g-2">
       <div class="card">
         <header><h3>Gender confidence</h3></header>
-        <p class="sub">Per-visitor confidence after majority voting across their frames.</p>
+        <p class="sub">Confidence for each person after voting across their frames.</p>
         <div id="c-gconf"></div>
       </div>
       <div class="card">
@@ -373,63 +447,70 @@
       </div>
     </div>
 
-    <div class="grid g-3" style="margin-top:14px">
+    <div class="grid g-3">
       <div class="card tile">
-        <div class="label">Low-confidence visitors</div>
-        <div class="value" id="m-lowconf">–</div>
+        <div class="label">Low confidence visitors</div>
+        <div class="value" id="m-lowconf">0</div>
         <div class="note" id="m-lowconf-note"></div>
       </div>
       <div class="card">
         <header><h3>Models</h3></header>
-        <dl class="kv" id="m-models" style="margin-top:10px"></dl>
+        <dl class="kv" id="m-models"></dl>
       </div>
       <div class="card">
-        <header><h3>Run configuration</h3></header>
-        <dl class="kv" id="m-config" style="margin-top:10px"></dl>
+        <header><h3>Run settings</h3></header>
+        <dl class="kv" id="m-config"></dl>
       </div>
     </div>
-  </section>
 
-  <!-- ---------------------------------------------------------- log -->
-  <section id="log" data-adv>
-    <div class="sec-head"><h2>Visitor log</h2>
-      <p>One row per tracked person — the raw record behind every chart above.</p></div>
-    <div class="card">
-      <header><h3 id="log-count"></h3><div class="spacer"></div>
-        <button id="btn-csv">Export CSV</button></header>
-      <div class="table-wrap" style="max-height:520px"><table id="t-tracks"></table></div>
+    <div class="grid">
+      <div class="card">
+        <header><h3 id="log-count">Visitors</h3><div class="spacer"></div>
+          <button id="btn-csv">Export CSV</button></header>
+        <p class="sub">One row for each tracked person. Click a column heading to sort.</p>
+        <div class="table-wrap tall"><table id="t-tracks"></table></div>
+      </div>
     </div>
   </section>
 </main>
 
-<dialog id="dlg-process">
+<!-- ============================================================= dialog -->
+<dialog id="dlg-process" class="glass">
   <form method="dialog" class="body" id="form-process">
     <h3>Process a video</h3>
-    <label>Video file
+    <label class="drop" id="drop">
       <input type="file" name="video" accept="video/*" required>
+      <span class="drop-title" id="drop-title">Choose a video, or drop one here</span>
+      <span class="drop-note">It stays on this machine. Nothing is uploaded anywhere else.</span>
     </label>
-    <label>Gender checkpoint (HuggingFace repo)
-      <input type="text" name="gender_repo" placeholder="abhshkp/footfall-analysis-vit-stage1">
+    <label>Gender model, a Hugging Face repo. Clear it to skip gender.
+      <input type="text" name="gender_repo" value="abhshkp/footfall-analysis-vit-stage1">
     </label>
-    <label>Age bundle directory (contains classifiers.pkl)
-      <input type="text" name="age_bundle" placeholder="models/age">
+    <label>Age model, the folder holding classifiers.pkl. Clear it to skip age.
+      <input type="text" name="age_bundle" value="models/age">
     </label>
-    <label>Recorded on <span style="color:var(--muted)">— powers the trend charts</span>
+    <label>Recorded on, which is what the trend charts group by
       <input type="datetime-local" name="captured_at">
     </label>
-    <div class="grid g-2" style="gap:10px">
+    <div class="grid g-2 mini">
       <label>Shop<input type="text" name="site" placeholder="Store"></label>
       <label>Camera<input type="text" name="camera" placeholder="Camera 1"></label>
     </div>
-    <div class="grid g-2" style="gap:10px">
+    <label>How carefully to look for people
+      <select name="verifier">
+        <option value="yolov8m.pt">Thorough: double-check faint detections with a second detector (slower)</option>
+        <option value="none">Fast: count only people the detector is sure about</option>
+      </select>
+    </label>
+    <div class="grid g-2 mini">
       <label>Frame stride<input type="number" name="stride" value="2" min="1" max="30"></label>
       <label>Detection confidence<input type="number" name="det_conf" value="0.4" min="0.05" max="0.95" step="0.05"></label>
     </div>
-    <p class="sub" id="proc-status" style="margin:0"></p>
+    <p class="sub" id="proc-status"></p>
     <div class="progress" id="proc-progress" hidden><i></i></div>
     <div class="row">
       <button type="button" id="proc-cancel">Close</button>
-      <button type="submit" class="primary" id="proc-go">Start</button>
+      <button type="submit" class="primary" id="proc-go">Start processing</button>
     </div>
   </form>
 </dialog>
