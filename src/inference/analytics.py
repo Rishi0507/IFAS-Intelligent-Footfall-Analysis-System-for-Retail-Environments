@@ -52,6 +52,18 @@ def _side(cx, cy, w, h, margin=0.12):
     return "interior"
 
 
+def _thin(path, n=60):
+    """At most n points, evenly spread, always keeping the first and the last.
+
+    (Slicing with a step and then cutting to n drops the end of the trail:
+    a path of 119 points lost its whole second half that way.)
+    """
+    if len(path) <= n:
+        return path
+    step = (len(path) - 1) / float(n - 1)
+    return [path[int(round(i * step))] for i in range(n)]
+
+
 def _tier(dwell):
     for name, lo, hi in DWELL_TIERS:
         if lo <= dwell < hi:
@@ -111,6 +123,7 @@ def build_analytics(tracks, meta, config, occupancy_by_frame, model_card=None,
             "tier": _tier(dwell),
             "frames": t.frames,
             "classified_frames": t.n_classified,
+            "rejoins": getattr(t, "rejoins", 0),
             "det_conf": round(t.det_conf_sum / max(t.frames, 1), 3),
             "avg_size_pct": round(100 * mean(p[3] for p in t.path), 2),
             "entry": entry,
@@ -118,8 +131,7 @@ def build_analytics(tracks, meta, config, occupancy_by_frame, model_card=None,
             "flow": flow,
             "zone": ZONES[zone_i],
             # Subsampled: the dashboard draws trails, it does not re-track.
-            "path": [[round(p[0] / fps, 2), p[1], p[2]]
-                     for p in t.path[::max(1, len(t.path) // 60)]][:60],
+            "path": [[round(p[0] / fps, 2), p[1], p[2]] for p in _thin(t.path)],
         })
 
     peak_cell = max((heat[r][c] for r in range(heat_rows) for c in range(heat_cols)), default=0) or 1.0

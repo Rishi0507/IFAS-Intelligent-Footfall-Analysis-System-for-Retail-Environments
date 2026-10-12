@@ -343,7 +343,8 @@ def insights(doc):
 
     zones = doc["distributions"]["zones"]
     top = max(zones, key=lambda z: zones[z]["visitors"])
-    if zones[top]["visitors"]:
+    leaders = [z for z in zones if zones[z]["visitors"] == zones[top]["visitors"]]
+    if zones[top]["visitors"] and len(leaders) == 1:      # a tie has no busiest area
         share = 100.0 * zones[top]["visitors"] / len(tracks)
         out.append({
             "kind": "layout",
