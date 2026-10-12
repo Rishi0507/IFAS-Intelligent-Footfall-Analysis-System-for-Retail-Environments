@@ -117,3 +117,47 @@ def test_missing_video_is_reported_as_an_error(tmp_path):
     with pytest.raises(ValueError, match="Could not open video"):
         process_video(tmp_path / "nope.mp4", tmp_path / "run4",
                       detector=StubDetector(), gender_model=StubGender())
+
+class FaintDetector:
+    """One clear walker, plus two faint boxes that never get above 0.15:
+    a person sitting behind glass (top right) and a poster (top left)."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, frame, **kwargs):
+        i = self.calls
+        self.calls += 1
+        return [_Result([_Box([10 + 4 * i, 40, 40 + 4 * i, 130], 0.9),
+                         _Box([250, 20, 280, 90], 0.12),
+                         _Box([100, 10, 130, 80], 0.14)])]
+
+
+class StubVerifier:
+    """The larger model: it sees the seated person and not the poster."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, frame, **kwargs):
+        self.calls += 1
+        return [_Result([_Box([248, 18, 282, 92], 0.5)])]
+
+
+def test_faint_person_is_counted_only_when_the_second_detector_agrees(video, tmp_path):
+    verifier = StubVerifier()
+    doc = process_video(video, tmp_path / "run5", stride=1, write_video=False, device="cpu",
+                        detector=FaintDetector(), gender_model=StubGender(), verifier=verifier)
+    assert verifier.calls > 0
+    assert doc["kpis"]["visitors"] == 2                       # the walker and the seated person
+    seated = [t for t in doc["tracks"] if t["first_sec"] == 0.0 and t["zone"] == "Right"]
+    assert len(seated) == 1 and seated[0]["dwell_sec"] > 3.0  # counted from the first faint sighting
+    assert doc["kpis"]["hunches_dropped"] >= 1                # the poster
+    # Asked a bounded number of times, not on every frame.
+    assert verifier.calls <= 8
+
+
+def test_without_a_second_detector_faint_boxes_count_for_nothing(video, tmp_path):
+    doc = process_video(video, tmp_path / "run6", stride=1, write_video=False, device="cpu",
+                        detector=FaintDetector(), gender_model=StubGender(), verifier_weights=None)
+    assert doc["kpis"]["visitors"] == 1
