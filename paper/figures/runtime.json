@@ -1,0 +1,35 @@
+{
+ "machine": {
+  "cpu": "AMD Ryzen 3 3250U with Radeon Graphics",
+  "threads": 3,
+  "device": "cpu",
+  "torch": "2.11.0+cpu",
+  "python": "3.12.4"
+ },
+ "video": {
+  "name": "video.mp4",
+  "width": 848,
+  "height": 478,
+  "frames_timed": 32,
+  "crops_found": 64,
+  "mean_crop_px": [
+   164,
+   225
+  ]
+ },
+ "detector": {
+  "weights": "yolov8n.pt",
+  "ms_per_frame": 157.38
+ },
+ "gender": {
+  "ms_per_crop_by_batch": {
+   "1": 899.73,
+   "4": 863.12,
+   "16": 794.38
+  }
+ },
+ "age": {
+  "ms_per_crop": 55.16,
+  "ms_features_only": 43.22
+ }
+}
