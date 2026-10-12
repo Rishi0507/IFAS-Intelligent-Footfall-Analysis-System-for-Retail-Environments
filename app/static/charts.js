@@ -1,4 +1,5 @@
-/* Hand-rolled SVG chart primitives.
+/* Hand-rolled SVG chart primitives (the 3D views live in stage3d.js and
+   skyline3d.js).
    No chart library: every mark is drawn to the same spec (<=24px bars, 4px
    rounded data-ends, 2px surface gaps, 2px lines, hairline solid grid) and
    every colour comes from a CSS variable, so light/dark swap in one place.
@@ -123,7 +124,9 @@ export function mount(container, render) {
   };
   if (!observed.has(container)) {
     let t;
-    const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(run, 60); });
+    // Call through the element: this closure belongs to the first mount, and
+    // mounting again with new data must not be undone by the next resize.
+    const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => container.__render(), 60); });
     ro.observe(container);
     observed.set(container, ro);
   }
@@ -159,8 +162,9 @@ export function columns(container, opts) {
     data.forEach((d, i) => {
       const x = pad.l + band * i + (band - bw) / 2;
       const bh = Math.max(0, ih - (y(d.value) - pad.t));
-      const p = el('path', { class: 'mark', d: barPath(x, y(d.value), bw, bh), fill: d.color || 'var(--accent)' }, svg);
+      el('path', { class: 'mark', d: barPath(x, y(d.value), bw, bh), fill: d.color || 'var(--neutral)' }, svg);
       const hit = el('rect', { class: 'hit', x: pad.l + band * i, y: pad.t, width: band, height: ih }, svg);
+      if (onClick) hit.style.cursor = 'pointer';
       hoverable(hit, d.label, [{ label: d.hint || 'Count', value: `${format(d.value)}${unit}`, color: d.color }],
         onClick && (() => onClick(d)));
       if (i % labelEvery === 0) {
@@ -279,8 +283,10 @@ export function lines(container, opts) {
       el('circle', { class: 'mark', cx: X(li), cy: Y(s.values[li]), r: 4, fill: s.color, stroke: SURFACE(), 'stroke-width': 2 }, svg);
     });
 
-    if (marker != null && x.length > 1) {
-      const frac = Math.max(0, Math.min(1, (marker - x[0]) / (x[x.length - 1] - x[0] || 1)));
+    // A function is read on every draw, so a moving playhead needs no re-mount.
+    const at = typeof marker === 'function' ? marker() : marker;
+    if (at != null && x.length > 1) {
+      const frac = Math.max(0, Math.min(1, (at - x[0]) / (x[x.length - 1] - x[0] || 1)));
       const mx = pad.l + frac * iw;
       el('line', { x1: mx, x2: mx, y1: pad.t - 4, y2: pad.t + ih, stroke: 'var(--text-1)', 'stroke-width': 1.5, opacity: .55 }, svg);
     }
@@ -320,7 +326,7 @@ export function lines(container, opts) {
 /* ----------------------------------------------------- horizontal bars */
 export function hbars(container, opts) {
   mount(container, (root, w) => {
-    const { data, rowH = 30, format = fmt.int, labelW = 110, color = 'var(--accent)', unit = '' } = opts;
+    const { data, rowH = 30, format = fmt.int, labelW = 110, color = 'var(--neutral)', unit = '' } = opts;
     const height = data.length * rowH + 8;
     const svg = svgRoot(root, w, height);
     const iw = w - labelW - 54;
@@ -386,7 +392,7 @@ export function heatgrid(container, opts) {
     const svg = svgRoot(root, w, height);
     const cw = w / cols, ch = height / rows;
     const ramp = ['--seq-0', '--seq-1', '--seq-2', '--seq-3', '--seq-4', '--seq-5', '--seq-6'];
-    el('rect', { x: 0, y: 0, width: w, height, fill: 'var(--seq-0)', rx: 6 }, svg);
+    el('rect', { x: 0, y: 0, width: w, height, fill: 'var(--seq-0)', rx: 10 }, svg);
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const v = grid[r][c];
@@ -396,7 +402,7 @@ export function heatgrid(container, opts) {
           class: 'mark', x: c * cw + 1, y: r * ch + 1, width: cw - 2, height: ch - 2, rx: 3,
           fill: `var(${ramp[step]})`,
         }, svg);
-        hoverable(cell, `Cell ${c + 1},${r + 1}`, [{ label: 'Relative density', value: fmt.pct(v * 100, 0) }],
+        hoverable(cell, 'This spot', [{ label: 'Against the busiest spot', value: fmt.pct(v * 100, 0) }],
           onCell && (() => onCell(c, r)));
       }
     }
@@ -425,7 +431,7 @@ export function splitBar(container, parts, format = fmt.pct) {
   const total = parts.reduce((s, p) => s + p.value, 0) || 1;
   container.innerHTML = '';
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:2px;height:14px;border-radius:7px;overflow:hidden;margin:10px 0 8px';
+  row.style.cssText = 'display:flex;gap:2px;height:12px;border-radius:6px;overflow:hidden;margin:12px 0 4px';
   parts.forEach((p) => {
     const i = document.createElement('i');
     i.style.cssText = `flex:${p.value};background:${p.color};display:block`;
@@ -436,12 +442,12 @@ export function splitBar(container, parts, format = fmt.pct) {
   const legend = document.createElement('div');
   legend.className = 'legend';
   legend.innerHTML = parts.map((p) =>
-    `<span class="item"><i class="key" style="background:${p.color}"></i>${p.label} <b style="color:var(--text-1);font-weight:560">${format((p.value / total) * 100)}</b></span>`).join('');
+    `<span class="item"><i class="key" style="background:${p.color}"></i>${p.label} <b style="color:var(--text-1);font-weight:600">${format((p.value / total) * 100)}</b></span>`).join('');
   container.appendChild(legend);
 }
 
 /* ------------------------------------------------------------- sparkline */
-export function sparkline(container, values, color = 'var(--accent)') {
+export function sparkline(container, values, color = 'var(--neutral)') {
   mount(container, (root, w) => {
     const h = 34;
     const svg = svgRoot(root, w, h);
