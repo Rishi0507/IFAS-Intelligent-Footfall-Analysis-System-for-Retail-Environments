@@ -58,6 +58,7 @@ def list_runs():
             "site": doc["meta"].get("site"),
             "camera": doc["meta"].get("camera"),
             "has_video": (d / "video.mp4").exists(),
+            "has_poster": (d / "poster.jpg").exists(),
         })
     runs.sort(key=lambda r: r["demo"])
     return runs
@@ -147,6 +148,9 @@ def _process(job_id, video_path, run_dir, opts):
             JOBS[job_id].update(stage="failed", error=f"{type(exc).__name__}: {exc}")
     finally:
         Path(video_path).unlink(missing_ok=True)
+        # A failed job leaves no analytics; do not keep its half-written folder.
+        if not (run_dir / "analytics.json").exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
 
 
 @app.post("/api/runs")
@@ -155,7 +159,8 @@ async def create_run(background: BackgroundTasks, video: UploadFile = File(...),
                      age_bundle: str = Form(""), stride: int = Form(2),
                      det_conf: float = Form(0.4), write_video: bool = Form(True),
                      max_frames: int = Form(0), captured_at: str = Form(""),
-                     site: str = Form(""), camera: str = Form("")):
+                     site: str = Form(""), camera: str = Form(""),
+                     verifier: str = Form("yolov8m.pt")):
     run_id = f"{Path(video.filename).stem[:40] or 'run'}-{uuid.uuid4().hex[:6]}"
     run_dir = RUNS / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -177,6 +182,7 @@ async def create_run(background: BackgroundTasks, video: UploadFile = File(...),
         "captured_at": captured_at or None,
         "site": site or None,
         "camera": camera or None,
+        "verifier_weights": None if verifier in ("", "none") else verifier,
     })
     return JSONResponse({"job": job_id, "run_id": run_id}, status_code=202)
 
