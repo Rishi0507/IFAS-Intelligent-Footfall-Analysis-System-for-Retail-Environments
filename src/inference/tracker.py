@@ -6,8 +6,24 @@ per-frame classifier votes, and yields a dwell time and a path.
 
 Deliberately simple (no appearance embedding, no Kalman filter): store footage
 is short and the classifiers already dominate the runtime cost.
+
+Three additions deal with a detector that is unsure, or loses someone for a
+while (behind glass, shelving, another person):
+
+* **Confidence levels.** A confident detection starts a person outright. A
+  weak one may extend a person who is already being followed - weak boxes on a
+  known person are usually real.
+* **Tentative tracks.** A weak box out of nowhere is usually a shelf, but
+  sometimes it is a person sitting behind glass. It opens a *tentative* track,
+  which counts for nothing until something confirms it: a confident detection
+  later on, or the caller looking closer (`IoUTracker.confirm`). Confirmed, it
+  keeps its whole history, so the person's stay starts at the first sighting.
+  Never confirmed, it is thrown away.
+* **Re-joining.** A box that appears where a person was recently lost is that
+  person again, not a new visitor. See `IoUTracker._rejoin` for the rules.
 """
 from __future__ import annotations
+import math
 from dataclasses import dataclass, field
 
 
@@ -25,6 +41,14 @@ def iou(a, b):
     return inter / float(area_a + area_b - inter)
 
 
+def overlap_of_smaller(a, b):
+    """Share of the smaller box that lies inside the other one."""
+    iw = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    ih = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+    return (iw * ih) / float(smaller) if smaller > 0 else 0.0
+
+
 @dataclass
 class Track:
     """One person, followed across frames, with accumulated classifier votes."""
@@ -40,6 +64,12 @@ class Track:
     age_score_sum: dict = field(default_factory=dict)     # label -> summed prob
     age_votes: dict = field(default_factory=dict)
     n_classified: int = 0
+    rejoins: int = 0                  # times this person was lost and picked up again
+    confirmed: bool = True            # False while the track is only a weak hunch
+    checks: int = 0                   # closer looks spent on a tentative track
+    last_check_frame: int = -10 ** 9
+    conf_max: float = 0.0
+    first_box: tuple = None           # where the track began; used when a hunch is confirmed
     last_vote_frame: int = -10 ** 9   # gates re-classification; see needs_vote()
     path: list = field(default_factory=list)              # [(frame, cx, cy, area_frac)]
 
@@ -67,6 +97,7 @@ class Track:
         self.frames += 1
         self.misses = 0
         self.det_conf_sum += det_conf
+        self.conf_max = max(self.conf_max, det_conf)
         cx, cy = self.center
         area = (box[2] - box[0]) * (box[3] - box[1])
         self.path.append((frame_idx, round(cx, 1), round(cy, 1), round(area / frame_area, 5)))
@@ -101,12 +132,90 @@ class Track:
 
 
 class IoUTracker:
-    def __init__(self, iou_thresh=0.3, max_misses=30):
+    def __init__(self, iou_thresh=0.3, max_misses=30, rejoin_frames=0,
+                 new_track_conf=0.0, rejoin_conf=0.0, tentative_conf=None,
+                 frame_size=None, edge_margin=0.12):
+        """
+        rejoin_frames   how long (in video frames) a lost person can still be
+                        picked up again; 0 turns re-joining off
+        new_track_conf  detections at or above this start a person outright
+        rejoin_conf     the least a detection needs to re-join a lost person
+        tentative_conf  detections at or above this (and below new_track_conf)
+                        open a tentative track; None ignores them
+        frame_size      (width, height); needed to tell the interior of the
+                        frame from its edges, where people really do leave
+        """
         self.iou_thresh = iou_thresh
         self.max_misses = max_misses
+        self.rejoin_frames = rejoin_frames
+        self.new_track_conf = new_track_conf
+        self.rejoin_conf = rejoin_conf
+        self.tentative_conf = tentative_conf
+        self.unconfirmed = 0
+        self.frame_size = frame_size
+        self.edge_margin = edge_margin
         self.next_id = 1
+        self.rejoined = 0
         self.active: list[Track] = []
         self.finished: list[Track] = []
+
+    def _interior(self, cx, cy):
+        if not self.frame_size:
+            return False
+        w, h = self.frame_size
+        m = self.edge_margin
+        return w * m < cx < w * (1 - m) and h * m < cy < h * (1 - m)
+
+    @staticmethod
+    def _settled(track):
+        """Whether the person was standing or sitting still when last seen."""
+        pts = track.path[-8:]
+        if len(pts) < 3:
+            return False
+        height = track.box[3] - track.box[1]
+        return math.hypot(pts[-1][1] - pts[0][1], pts[-1][2] - pts[0][2]) < 0.35 * height
+
+    def _rejoin(self, box, frame_idx, in_place_only=False):
+        """The lost track this box most plausibly continues, or None.
+
+        A person cannot vanish in the middle of the frame: if a track ends there
+        the detector lost them, and a box turning up nearby soon after is the
+        same person. At the edges people do leave and others do arrive, so there
+        the only thing re-joined is someone who was sitting or standing still
+        and reappears in the very same place.
+
+        `in_place_only` is for weak boxes: they may only pick up a confirmed
+        person exactly where that person was, never one who has moved.
+        """
+        if not self.rejoin_frames:
+            return None
+        cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+        height = box[3] - box[1]
+        best, best_score = None, 0.0
+        for t in self.active + self.finished:
+            gap = frame_idx - t.last_frame
+            if gap <= 0 or gap > self.rejoin_frames:      # matched this frame, or lost too long ago
+                continue
+            if in_place_only and not t.confirmed:
+                continue
+            tx, ty = t.center
+            t_height = t.box[3] - t.box[1]
+            both_inside = self._interior(cx, cy) and self._interior(tx, ty)
+            overlap = iou(t.box, box)
+            if overlap >= self.iou_thresh and (both_inside or self._settled(t)):
+                score = 2.0 + overlap                     # back in the same spot
+            elif in_place_only:
+                continue
+            elif both_inside and 0.5 <= height / max(t_height, 1) <= 2.0:
+                reach = math.hypot(cx - tx, cy - ty) / max(height, t_height, 1)
+                if reach > 1.0:                           # more than a body height away
+                    continue
+                score = 1.0 - reach
+            else:
+                continue
+            if score > best_score:
+                best, best_score = t, score
+        return best
 
     def update(self, detections, frame_idx, frame_area):
         """detections: list of (box, det_conf). Returns list of (track, box, conf)."""
@@ -118,7 +227,7 @@ class IoUTracker:
                     pairs.append((score, ti, di))
         pairs.sort(reverse=True)
 
-        used_t, used_d, matched = set(), set(), []
+        used_t, used_d, matched, newly_sure = set(), set(), [], []
         for score, ti, di in pairs:
             if ti in used_t or di in used_d:
                 continue
@@ -126,16 +235,51 @@ class IoUTracker:
             used_d.add(di)
             box, conf = detections[di]
             self.active[ti].observe(box, frame_idx, conf, frame_area)
+            if not self.active[ti].confirmed and conf >= self.new_track_conf:
+                newly_sure.append(self.active[ti])        # a clear sighting settles it
             matched.append((self.active[ti], box, conf))
 
-        for di, (box, conf) in enumerate(detections):
-            if di in used_d:
+        # Strongest first, so a confident box gets first claim on a lost track.
+        leftover = sorted((di for di in range(len(detections)) if di not in used_d),
+                          key=lambda di: -detections[di][1])
+        for di in leftover:
+            box, conf = detections[di]
+            # A detector sometimes puts two boxes on one person (the body and
+            # its reflection in glass, or the body and just the torso). A box
+            # lying mostly on someone who is already matched is that person
+            # again, and must neither start nor revive a track.
+            # (A confident box is only dropped for a confirmed person: a hunch
+            # must not be able to hide someone real.)
+            weak = conf < self.new_track_conf
+            if any(overlap_of_smaller(box, taken) >= 0.5
+                   for t, taken, _c in matched if t.confirmed or weak):
                 continue
+            if conf >= self.rejoin_conf:
+                lost = self._rejoin(box, frame_idx)
+            elif self.tentative_conf is not None and conf >= self.tentative_conf:
+                lost = self._rejoin(box, frame_idx, in_place_only=True)
+            else:
+                lost = None
+            if lost is not None:
+                if lost in self.finished:                 # closed already: bring it back
+                    self.finished.remove(lost)
+                    self.active.append(lost)
+                lost.observe(box, frame_idx, conf, frame_area)
+                lost.rejoins += 1
+                self.rejoined += 1
+                if not lost.confirmed and conf >= self.new_track_conf:
+                    newly_sure.append(lost)
+                matched.append((lost, box, conf))
+                continue
+            sure = conf >= self.new_track_conf
+            if not sure and (self.tentative_conf is None or conf < self.tentative_conf):
+                continue                                  # too weak even for a hunch
             cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
             area = (box[2] - box[0]) * (box[3] - box[1])
             t = Track(id=self.next_id, box=box, first_frame=frame_idx, last_frame=frame_idx,
-                      det_conf_sum=conf, path=[(frame_idx, round(cx, 1), round(cy, 1),
-                                                round(area / frame_area, 5))])
+                      det_conf_sum=conf, confirmed=sure, conf_max=conf, first_box=box,
+                      path=[(frame_idx, round(cx, 1), round(cy, 1),
+                             round(area / frame_area, 5))])
             self.next_id += 1
             self.active.append(t)
             matched.append((t, box, conf))
@@ -148,9 +292,47 @@ class IoUTracker:
             t.misses += 1
             (still if t.misses <= self.max_misses else self.finished).append(t)
         self.active = still
+        for t in newly_sure:
+            survivor = self.confirm(t)
+            if survivor is not t:
+                matched = [(survivor if m is t else m, b, c) for m, b, c in matched]
         return matched
 
+    def confirm(self, track):
+        """A tentative track turned out to be a person.
+
+        If it began where a known person was recently lost, it is that person
+        coming back into view, picked up weakly at first: fold it into their
+        track so they are counted once and their stay has no hole in it.
+        Returns the track that lives on, which the caller should use from here.
+        """
+        if track.confirmed:
+            return track
+        track.confirmed = True
+        older = self._rejoin(track.first_box or track.box, track.first_frame)
+        if older is None or older is track or not older.confirmed:
+            return track
+        older.path.extend(track.path)
+        older.frames += track.frames
+        older.det_conf_sum += track.det_conf_sum
+        older.conf_max = max(older.conf_max, track.conf_max)
+        older.box, older.last_frame, older.misses = track.box, track.last_frame, track.misses
+        older.rejoins += 1
+        self.rejoined += 1
+        if track in self.active:
+            self.active.remove(track)
+        if older in self.finished:
+            self.finished.remove(older)
+        if older not in self.active:
+            self.active.append(older)
+        return older
+
     def close(self):
+        """Every confirmed person, in order of first appearance. Hunches that
+        nothing ever confirmed are dropped and counted in `unconfirmed`."""
         self.finished.extend(self.active)
         self.active = []
-        return sorted(self.finished, key=lambda t: t.id)
+        people = [t for t in self.finished if t.confirmed]
+        self.unconfirmed = len(self.finished) - len(people)
+        self.dropped_hunches = [t for t in self.finished if not t.confirmed]
+        return sorted(people, key=lambda t: t.id)
