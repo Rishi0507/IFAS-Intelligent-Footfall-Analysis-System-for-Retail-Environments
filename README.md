@@ -58,7 +58,18 @@ graph TD
 │   └── training.md             # Detailed guide explaining stages and tuning strategies
 ├── app/
 │   ├── server.py               # Dashboard server (serves the UI, runs the pipeline on upload)
-│   └── static/                 # The dashboard itself (HTML + CSS + vanilla-JS SVG charts)
+│   └── static/                 # The dashboard itself (HTML + CSS + vanilla JS)
+│       ├── app.js              # Controller: loads a run, filters it, renders every tab
+│       ├── charts.js           # Hand-drawn SVG charts
+│       ├── stage3d.js          # The 3D floor (heat columns, paths, replay)
+│       ├── skyline3d.js        # The 3D age and gender blocks
+│       ├── three-kit.js        # Shared three.js plumbing
+│       ├── vendor/             # three.js bundle, built from three-entry.js
+│       └── fonts/              # Inter (OFL)
+├── paper/
+│   ├── ifas.tex                # The research paper (IEEE conference format)
+│   ├── ifas.pdf                # Built paper
+│   └── figures/                # Plot script, plots and the dashboard screenshot
 ├── src/
 │   ├── inference/
 │   │   ├── pipeline.py         # Video -> annotated MP4 + analytics.json
@@ -77,7 +88,8 @@ graph TD
 │   └── test_inference.py       # Unit tests for tracking and analytics
 ├── scripts/
 │   ├── download_datasets.md    # Instructions and links to download baseline datasets
-│   └── generate_demo_run.py    # Synthesises a sample run so the dashboard opens without weights
+│   ├── generate_demo_run.py    # Synthesises a sample run so the dashboard opens without weights
+│   └── benchmark_stages.py     # Times detection and both classifiers on this machine
 ├── train_stage1.ipynb          # Notebook for Stage 1 base training
 ├── train_stage2.ipynb          # Notebook for Stage 2 target fine-tuning
 ├── test_model.ipynb            # Notebook for evaluating checkpoint on images/videos
@@ -222,7 +234,9 @@ becomes readable. A video is run through detection, tracking and both
 classifiers, producing an annotated MP4 and an `analytics.json` that the UI
 renders: footfall over time, occupancy, the age × gender cross-tab, dwell and
 engagement tiers, a position density map, per-model confidence, and a per-visitor
-log with CSV export. Light and dark themes; no chart library or CDN.
+log with CSV export. The views are tabs in a glass bar, and the density map is a
+3D floor you can orbit and replay. Light and dark themes. Nothing is loaded from
+a CDN: three.js and the fonts are vendored, so it works offline.
 
 ```bash
 pip install -r requirements.txt
@@ -243,9 +257,14 @@ lengths compare fairly; generated sample runs are excluded from every aggregate
 unless explicitly included. `scripts/process_folder.py` processes a folder of
 recordings in one command, which is how the history gets built.
 
-The dashboard has two views, toggled in the header: **Simple** (plain-language
-summary and headline numbers, for whoever runs the shop) and **Detailed**
-(filters, cross-tabs, model confidence, per-visitor log).
+The dashboard has two levels of detail, toggled in the header: **Simple**
+(plain-language summary and headline numbers, for whoever runs the shop) and
+**Detailed** (filters, cross-tabs, model confidence, per-visitor log).
+
+## Paper
+
+The research paper is in [paper/](paper/README.md): the IEEE-format source, the
+script that draws its plots and the built PDF.
 
 Age classification is optional and needs a bundle exported from
 `age_classifier_v3.ipynb` first - see [docs/dashboard.md](docs/dashboard.md),

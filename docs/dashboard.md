@@ -60,7 +60,11 @@ python -m src.inference.pipeline \
 | `--gender-repo` / `--gender-ckpt` | – | HuggingFace repo id, or a local checkpoint directory |
 | `--age-bundle` | – | Directory holding the pickled age SVMs (see below) |
 | `--detector` | `yolov8n.pt` | Any Ultralytics weight; `yolov8s.pt` catches more small people |
-| `--det-conf` | `0.4` | Lower it if people are missed, raise it if shelves get boxed |
+| `--det-conf` | `0.4` | What it takes to count a new person. Lower it if people are missed, raise it if shelves get boxed |
+| `--track-conf` | `0.25` | What a detection needs to pick a lost person back up. It never starts a new person |
+| `--rejoin-sec` | `8` | How long a person the detector lost can still be picked up again as the same person. `0` turns it off |
+| `--weak-conf` | `0.10` | The weakest detection that is kept. It can extend someone already being followed, or open a *hunch* that needs a second opinion. Set it equal to `--track-conf` to turn hunches off |
+| `--verifier` | `yolov8m.pt` | The larger detector asked about hunches. Downloaded once on first use. `none` to do without |
 | `--stride` | `2` | Classify every Nth frame. The tracker fills the gaps, so 2-4 is usually free accuracy-wise and halves the runtime |
 | `--min-track-frames` | `3` | Tracks shorter than this are discarded as detector noise |
 | `--bin-sec` | `5` | Timeline bin width |
@@ -247,6 +251,64 @@ MP4, which is much faster for bulk history.
 
 ---
 
+## Finding your way around
+
+The dashboard is six tabs in a glass bar at the top of the page. On a phone the
+tabs move to the bottom of the screen, within reach of a thumb. Keys `1` to `6`
+jump between them and the address bar keeps the tab (`#floor`), so a link opens
+on the right one.
+
+| Tab | What it answers |
+| :--- | :--- |
+| **Overview** | What happened, in one sentence and four numbers, over a 3D picture of the floor |
+| **Floor** | Where people stood and how they moved |
+| **People** | Who came in, by age and gender, and how long each group stayed |
+| **Trends** | How this recording compares with the others |
+| **Video** | The annotated footage, with a live count at the playhead |
+| **Log** | Model confidence, run settings and one row per visitor (Detailed only) |
+
+The recording picker sits beside the logo. It lists every run with its poster
+frame, head count and length, and marks generated samples.
+
+### The 3D floor
+
+The floor lays the camera frame flat. The top of the frame is the far edge.
+
+* **Columns** stand on the 16 x 9 heat grid. A column's height is the total time
+  people spent in that cell, in seconds. Hover one to read it.
+* **Paths** are the trails of each person, coloured by gender, age or length of
+  stay.
+* **People** appear as markers while the clock is inside the recording. Press
+  play or drag the time bar and the columns grow as people stand around. A long
+  recording is compressed so a replay always takes about half a minute.
+
+Drag to orbit. Hold `Ctrl` and scroll, or pinch, to zoom - a plain scroll moves
+the page as usual. **Top** flattens the columns into tiles and looks straight
+down. **Flat** swaps the scene for the 2D heat map, which is also what you get
+automatically on a machine without WebGL.
+
+**Camera frame** lays the footage on the floor under the columns. It follows the
+time bar, so the picture is the frame at the moment you are looking at. A trail
+is drawn over the whole recording, so at the end of the clip it can cross floor
+that is empty by then. Drag the time bar back along the trail and the person who
+made it is standing at its tip. A run that has no annotated video shows its
+first frame as a still.
+
+A person's position is the middle of their box, so a marker sits on the body
+and not at the feet.
+
+The same stage is the picture at the top of the Overview. There is one scene,
+moved between the two tabs, so the camera position and the clock carry over.
+
+The People tab has a second scene: one block for each age and gender group. Its
+height is either the head count or the average stay. In Detailed view, clicking
+a block filters the whole dashboard to that group.
+
+Time is shared across the page. The video, the floor, the occupancy chart and
+the *At this moment* panel all follow one playhead.
+
+---
+
 ## Simple and Detailed views
 
 The header toggle switches the whole page between two audiences, and the choice
@@ -259,7 +321,8 @@ mA - and the analyst filters are hidden (and cleared, so nothing is silently
 filtered out underneath).
 
 **Detailed** adds everything else: the filter row, the segment cross-tab, dwell
-and engagement tiers, flow and space, model confidence, and the per-visitor log.
+and engagement tiers, entry edges and path types, and the Log tab with model
+confidence and the per-visitor log.
 
 Card titles and captions change with the mode, not just visibility - "Peak
 occupancy" becomes "Most at once", "Average dwell" becomes "Typical visit".
@@ -272,15 +335,29 @@ occupancy" becomes "Most at once", "Average dwell" becomes "Typical visit".
   and scope every chart, table and KPI below them, including the video panel.
 * **Theme** follows the OS by default; the toggle overrides it and is
   remembered per browser.
-* **Charts** are hand-drawn SVG - no chart library, no CDN, works offline. Each
-  colour is a CSS variable, so both themes come from one definition. Gender uses
-  two categorical hues; age and engagement tiers use ordered single-hue ramps;
-  the density map uses a sequential ramp. All were validated for
-  colour-vision-deficiency separation and contrast against both surfaces.
+* **Charts** are hand-drawn SVG, with no chart library. The two 3D scenes use
+  three.js. Nothing is loaded from a CDN: three.js and the Inter typeface are
+  vendored under `app/static/vendor/` and `app/static/fonts/`, so the dashboard
+  works offline. `vendor/three-entry.js` lists what the bundle exports and how
+  to rebuild it.
+* **Colour** is spent only on things that mean something. Gender uses two
+  categorical hues, orange and blue, which also match the boxes drawn on the
+  video. Age uses one ordered ramp. Length of stay and the heat map use a
+  thermal ramp from cool to hot. Charts with a single series are drawn in the
+  text colour. Every colour is a CSS variable, so both themes come from one
+  definition, and the 3D scenes read the same variables.
+* **The background** is the current run's heat map, blown up and blurred behind
+  the glass panels. It changes with the recording and with the filters.
+* **Motion** is limited to things you asked for: the tab indicator sliding, the
+  columns rising when a recording loads, a replay. With *reduce motion* set in
+  the operating system all of it is switched off.
 * **Table view** - charts with a `Table` button swap to the equivalent numbers,
   and the visitor log carries every raw field (CSV export included).
-* The video and the charts share a playhead: scrub the video and the "at the
-  playhead" panel follows; click the occupancy chart to seek.
+* The video and the charts share a playhead: scrub the video and the *At this
+  moment* panel follows; click the occupancy chart to seek.
+* **Position density** counts seconds, not points. Each step of a trail is
+  weighted by how long it lasted, so a person who stood still for a minute
+  outweighs one who walked through.
 
 ---
 
@@ -296,8 +373,44 @@ shows a badge over the player saying so.
 
 ## Limitations to keep in mind
 
-* One person leaving and re-entering the frame counts twice - there is no
-  re-identification across tracks.
+* One person leaving the frame and coming back counts twice - there is no
+  re-identification by appearance. What the tracker does handle is a person the
+  detector loses *inside* the frame, behind glass or shelving: a box that turns
+  up within a body height of where they vanished, within `--rejoin-sec`, is
+  joined back onto the same person. At the edges of the frame this only applies
+  to someone who was sitting or standing still. Two boxes on one person (a body
+  and its reflection) count once.
+* People who are small, far away or behind glass may not be detected at all.
+  Nothing downstream can count someone the detector never saw. See the next
+  section for what is done about the ones it half sees.
+* In a crowd the tracker can still swap two people who cross, and the rule that
+  picks a lost person back up can join two different people who stand in the
+  same spot a few seconds apart.
+
+### People the detector is unsure about
+
+The fast detector gives a person sitting behind glass a score around 0.1. A
+poster or a stack of boxes gets the same score, so the threshold cannot simply
+be lowered. What the pipeline does instead:
+
+1. A weak box (0.10 to 0.40) that is not on anyone known opens a **hunch**. A
+   hunch is followed like a person but counts for nothing.
+2. Once it has lasted a few frames, a **second, larger detector** looks at the
+   same frame, at two input sizes. If it finds a person on that spot the hunch
+   becomes a person, with its whole history, so their stay starts at the first
+   faint sighting. This is asked at most four times per hunch, about once a
+   second.
+3. A hunch nothing confirms is dropped. Its spot is remembered, so the same
+   poster is not asked about again.
+
+The larger model is several times slower than the fast one, which is why it is
+only asked about hunches and never run on every frame. On the test clip this
+recovered a person seated behind a glass partition and a person at a desk at
+the edge of the frame, and ruled out a display stand that the fast detector
+kept flagging. It did not recover a person almost entirely hidden behind
+someone else: no detector we tried sees that person at all.
+
+The Log tab shows how many hunches were ruled out in a run.
 * Occupancy is *tracked people in frame*, not a turnstile count.
 * Zones are equal thirds of the frame, not real store zones; map them to
   fixtures yourself before quoting them.
