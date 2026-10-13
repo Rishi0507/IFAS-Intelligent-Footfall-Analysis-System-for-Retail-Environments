@@ -1,7 +1,7 @@
 """Video -> annotated MP4 + analytics.json.
 
     python -m src.inference.pipeline --video store.mp4 --out outputs/runs/store \
-        --gender-repo abhshkp/footfall-analysis-vit-stage1 --age-bundle abhshkp/footfall-analysis-age-svm
+        --gender-repo abhshkp/footfall-analysis-vit-stage2 --age-bundle abhshkp/footfall-analysis-age-svm
 
 Detection (YOLO) runs on every sampled frame; the two classifiers run on each
 person crop; an IoU tracker turns boxes into people; `analytics.build_analytics`

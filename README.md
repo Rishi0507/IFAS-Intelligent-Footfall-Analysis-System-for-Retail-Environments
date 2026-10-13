@@ -246,7 +246,7 @@ python scripts/generate_demo_run.py
 python -m app.server                     # http://127.0.0.1:8000
 
 # Process a real video
-python -m src.inference.pipeline     --video store_entrance.mp4 --out outputs/runs/store     --gender-repo abhshkp/footfall-analysis-vit-stage1     --age-bundle abhshkp/footfall-analysis-age-svm
+python -m src.inference.pipeline     --video store_entrance.mp4 --out outputs/runs/store     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm
 ```
 
 A **Store insights** section turns the run into business observations (footfall

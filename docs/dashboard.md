@@ -50,7 +50,7 @@ generate runs from the command line instead.
 python -m src.inference.pipeline \
     --video store_entrance.mp4 \
     --out outputs/runs/store-2026-09-07 \
-    --gender-repo abhshkp/footfall-analysis-vit-stage1 \
+    --gender-repo abhshkp/footfall-analysis-vit-stage2 \
     --age-bundle abhshkp/footfall-analysis-age-svm \
     --stride 2
 ```
@@ -84,7 +84,7 @@ checkpoint), then loaded from there without touching the network:
 
 ```bash
 pip install scikit-image        # the LBP texture features need it
-python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip     --gender-repo abhshkp/footfall-analysis-vit-stage1     --age-bundle abhshkp/footfall-analysis-age-svm
+python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm
 ```
 
 The Hub bundle is self-contained. Besides `classifiers` and `configs` it
@@ -221,7 +221,7 @@ Periods only mean something once there are many recordings, so adding a day's
 footage is one command:
 
 ```bash
-python scripts/process_folder.py footage/entrance     --site "MG Road" --camera "Entrance"     --gender-repo abhshkp/footfall-analysis-vit-stage1     --age-bundle abhshkp/footfall-analysis-age-svm --no-video
+python scripts/process_folder.py footage/entrance     --site "MG Road" --camera "Entrance"     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm --no-video
 ```
 
 It reads the capture time from each filename (`cam1_2026-09-05_17-30-00.mp4`)

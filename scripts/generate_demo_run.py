@@ -124,7 +124,7 @@ def main():
         "captured_at": a.captured_at,
     }
     config = {"detector": "yolov8n.pt", "det_conf": 0.4, "frame_stride": 2, "iou_thresh": 0.3,
-              "gender_model": "abhshkp/footfall-analysis-vit-stage1", "age_model": "peta-svm-v3"}
+              "gender_model": "abhshkp/footfall-analysis-vit-stage2", "age_model": "peta-svm-v3"}
     model_card = {
         "gender": {"family": "ViT-B/16 fine-tuned (2-stage)", "labels": ["female", "male"],
                    "source": config["gender_model"]},
