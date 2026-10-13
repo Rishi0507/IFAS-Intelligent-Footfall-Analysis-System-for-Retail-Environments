@@ -39,6 +39,33 @@ def _softmax(scores, temperature=1.0):
 # --------------------------------------------------------------------------
 # Gender: ViT
 # --------------------------------------------------------------------------
+# transformers has named the ViT encoder's weights two ways. The Hub
+# checkpoints use the first spelling; some installed versions build the second.
+_VIT_KEY_SPELLINGS = [
+    ("vit.layers.", "vit.encoder.layer."),
+    (".attention.q_proj.", ".attention.attention.query."),
+    (".attention.k_proj.", ".attention.attention.key."),
+    (".attention.v_proj.", ".attention.attention.value."),
+    (".attention.o_proj.", ".attention.output.dense."),
+    (".mlp.fc1.", ".intermediate.dense."),
+    (".mlp.fc2.", ".output.dense."),
+]
+
+
+def _match_vit_keys(state, expected):
+    """Rename checkpoint keys to whichever ViT spelling the model was built with."""
+    if set(state) <= set(expected):
+        return state
+    to_old = not any(k.startswith("vit.layers.") for k in expected)
+    out = {}
+    for k, v in state.items():
+        if k not in expected:
+            for new, old in _VIT_KEY_SPELLINGS:
+                k = k.replace(new, old) if to_old else k.replace(old, new)
+        out[k] = v
+    return out
+
+
 class GenderModel:
     def __init__(self, ckpt_dir, device="cpu", batch_size=16):
         import torch
@@ -63,7 +90,9 @@ class GenderModel:
         self._torch = torch
         self.model = _Net(self.name, cfg.get("num_labels", 2))
         state = torch.load(ckpt_dir / "pytorch_model.bin", map_location=device)
-        self.model.load_state_dict(state, strict=False)
+        # Strict: a non-strict load once ran every encoder layer on the ImageNet
+        # weights, because the checkpoint's layer names did not match.
+        self.model.load_state_dict(_match_vit_keys(state, self.model.state_dict()))
         self.model.to(device).eval()
         self.processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224")
         self.device = device
