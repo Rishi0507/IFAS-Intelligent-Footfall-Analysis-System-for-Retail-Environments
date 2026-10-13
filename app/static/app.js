@@ -683,13 +683,21 @@ function renderFlatMap(doc, rows) {
     box.appendChild(inner);
     new ResizeObserver(() => state.doc && renderFlatMap(state.doc, filtered())).observe(box);
   }
+  // In the Floor tab the legend sits above the scrubber; keep the map clear of it.
+  const full = $('#stage').dataset.mode === 'full';
+  box.style.bottom = full ? `${78 + $('#stage-legend').offsetHeight + 14}px` : '';
   const aspect = doc.meta.width / doc.meta.height;
   inner.style.width = `${Math.max(0, Math.min(box.clientWidth, box.clientHeight * aspect))}px`;
   C.heatgrid(inner, {
     ...heatFrom(rows, doc),
     aspect,
+    heat: $('#chk-heat').checked,
+    // Coloured like the 3D paths, by whatever Gender / Age / Stay is selected.
     paths: $('#chk-paths').checked
-      ? rows.slice(0, 160).map((r) => r.path.map(([, x, y]) => [x / doc.meta.width, y / doc.meta.height]))
+      ? rows.slice(0, 160).map((r) => ({
+        points: r.path.map(([, x, y]) => [x / doc.meta.width, y / doc.meta.height]),
+        color: colorOf(r),
+      }))
       : null,
   });
 }
@@ -1185,12 +1193,12 @@ function wireStage() {
     b.onclick = () => {
       state.colorBy = b.dataset.colorby;
       $$('#stage-tools [data-colorby]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      if (state.doc) renderStage(state.doc, filtered());
+      if (state.doc) { renderStage(state.doc, filtered()); renderFlatMap(state.doc, filtered()); }
     };
   });
   $('#chk-heat').onchange = (e) => {
     floor?.setLayers({ heat: e.target.checked });
-    if (state.doc) renderStage(state.doc, filtered());
+    if (state.doc) { renderStage(state.doc, filtered()); renderFlatMap(state.doc, filtered()); }
   };
   $('#chk-paths').onchange = (e) => {
     floor?.setLayers({ paths: e.target.checked });

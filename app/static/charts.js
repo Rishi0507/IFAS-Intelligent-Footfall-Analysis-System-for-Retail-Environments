@@ -387,13 +387,14 @@ export function stackedRows(container, opts) {
 /* -------------------------------------------------------------- heatmap */
 export function heatgrid(container, opts) {
   mount(container, (root, w) => {
-    const { grid, cols, rows, aspect = 16 / 9, onCell = null, paths = null } = opts;
+    // paths: [{ points: [[x, y], ...] (0-1), color }]; heat: false draws only the paths.
+    const { grid, cols, rows, aspect = 16 / 9, onCell = null, paths = null, heat = true } = opts;
     const height = Math.round(w / aspect);
     const svg = svgRoot(root, w, height);
     const cw = w / cols, ch = height / rows;
     const ramp = ['--seq-0', '--seq-1', '--seq-2', '--seq-3', '--seq-4', '--seq-5', '--seq-6'];
     el('rect', { x: 0, y: 0, width: w, height, fill: 'var(--seq-0)', rx: 10 }, svg);
-    for (let r = 0; r < rows; r++) {
+    for (let r = 0; heat && r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const v = grid[r][c];
         if (v <= 0.001) continue;
@@ -407,12 +408,12 @@ export function heatgrid(container, opts) {
       }
     }
     if (paths) {
-      for (const p of paths) {
-        if (p.length < 2) continue;
+      for (const { points, color } of paths) {
+        if (points.length < 2) continue;
         el('path', {
-          d: `M${p.map(([x, y]) => `${x * w},${y * height}`).join(' L')}`,
-          fill: 'none', stroke: 'var(--text-1)', 'stroke-width': 1.25,
-          'stroke-opacity': 0.28, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+          d: `M${points.map(([x, y]) => `${x * w},${y * height}`).join(' L')}`,
+          fill: 'none', stroke: color || 'var(--text-1)', 'stroke-width': color ? 1.5 : 1.25,
+          'stroke-opacity': color ? 0.7 : 0.28, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
         }, svg);
       }
     }
