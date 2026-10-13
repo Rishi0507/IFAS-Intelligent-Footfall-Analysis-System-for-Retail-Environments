@@ -88,6 +88,35 @@ def test_rbf_only_bundle_needs_no_support_matrix(tmp_path, images):
     assert len(model.predict(images[:2])) == 2
 
 
+def test_hub_bundle_uses_its_own_feature_hyperparams(tmp_path, images):
+    # The Hub file carries X_train and the hyperparams it was trained with,
+    # which differ from the module defaults - nothing else sits next to it.
+    hp = {"N_REGIONS": 2, "COLOR_BINS": 16, "LBP_POINTS": 8, "LBP_RADII": [1, 2, 3]}
+    X = np.vstack([extract_features(i, n_regions=2) for i in images])
+    assert X.shape[1] == 2 * (5 * 16 + 3 * 10)
+    y = np.random.default_rng(1).integers(0, len(AGE_CLASSES), len(X))
+    K = intersection_kernel(X, X)
+    classifiers, configs = {}, {}
+    for idx, cls in enumerate(AGE_CLASSES):
+        yb = (y == idx).astype(int)
+        yb[0], yb[1] = 1, 0
+        if idx % 2:
+            classifiers[cls] = SVC(kernel="precomputed", C=1).fit(K, yb)
+            configs[cls] = ("intersection", 1, None)
+        else:
+            classifiers[cls] = SVC(kernel="rbf", C=1, gamma=0.01).fit(X, yb)
+            configs[cls] = ("rbf", 1, 0.01)
+    pkl = tmp_path / AgeModel.HUB_FILE
+    with open(pkl, "wb") as f:
+        pickle.dump({"classifiers": classifiers, "configs": configs,
+                     "hyperparams": hp, "X_train": X}, f)
+
+    for bundle in (pkl, tmp_path):                  # the file, or its directory
+        model = AgeModel(bundle)
+        assert model.feature_kw["n_regions"] == 2
+        assert len(model.predict(images[:3])) == 3
+
+
 def test_a_bundle_without_configs_says_so(tmp_path, images):
     bundle = _bundle(tmp_path, images)
     with open(bundle / "classifiers.pkl", "rb") as f:

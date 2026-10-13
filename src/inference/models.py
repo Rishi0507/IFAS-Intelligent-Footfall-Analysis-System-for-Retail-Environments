@@ -19,8 +19,10 @@ import numpy as np
 
 AGE_CLASSES = ["Age16-30", "Age31-45", "Age46-60", "AgeAbove61"]
 
-# Feature-extraction constants - must match age_classifier_v3.ipynb exactly,
-# otherwise the serialized SVMs see a different feature space.
+# Feature-extraction defaults. A bundle that records its own `hyperparams` (the
+# Hub bundle does) overrides these; they only apply to older bundles that do not,
+# and must then match the notebook run that trained them, otherwise the
+# serialized SVMs see a different feature space.
 N_REGIONS = 5
 COLOR_BINS = 16
 LBP_POINTS = 8
@@ -128,11 +130,11 @@ def texture_histogram(region, points=LBP_POINTS, radii=None):
     return np.concatenate(hists)
 
 
-def extract_features(pil_img):
+def extract_features(pil_img, n_regions=N_REGIONS, bins=COLOR_BINS, points=LBP_POINTS, radii=None):
     feats = []
-    for region in region_split(pil_img.convert("RGB")):
-        feats.append(color_histogram(region))
-        feats.append(texture_histogram(region))
+    for region in region_split(pil_img.convert("RGB"), n_regions):
+        feats.append(color_histogram(region, bins))
+        feats.append(texture_histogram(region, points, radii))
     return np.concatenate(feats)
 
 
@@ -146,7 +148,8 @@ def intersection_kernel(X, Y):
 class AgeModel:
     """Loads the pickled per-attribute SVMs produced by age_classifier_v3.ipynb.
 
-    Bundle directory layout (any of these is accepted):
+    `bundle` is the Hub file `age_classifier_bundle.pkl` (see `from_hub`), a
+    directory holding it, or a directory in the older hand-exported layout:
 
         classifiers.pkl   dict[label] -> SVC, or {"classifiers": ..., "configs": ...}
         configs.pkl       dict[label] -> (kernel, C, gamma)         [optional if bundled]
@@ -154,17 +157,28 @@ class AgeModel:
                           any attribute whose selected kernel is "intersection",
                           because a precomputed-kernel SVM can only score against
                           the training features it was fitted on]
+
+    The Hub bundle carries `configs`, `X_train` (the support matrix) and the
+    feature `hyperparams` it was trained with, so it needs nothing alongside it.
     """
 
-    def __init__(self, bundle_dir):
-        bundle_dir = Path(bundle_dir)
-        with open(bundle_dir / "classifiers.pkl", "rb") as f:
+    HUB_FILE = "age_classifier_bundle.pkl"
+
+    def __init__(self, bundle):
+        bundle = Path(bundle)
+        if bundle.is_file():
+            bundle_dir, pkl = bundle.parent, bundle
+        else:
+            bundle_dir = bundle
+            pkl = next((bundle / n for n in ("classifiers.pkl", self.HUB_FILE)
+                        if (bundle / n).exists()), bundle / "classifiers.pkl")
+        with open(pkl, "rb") as f:
             blob = pickle.load(f)
         if isinstance(blob, dict) and "classifiers" in blob:
             self.classifiers = blob["classifiers"]
             self.configs = blob.get("configs", {})
         else:
-            self.classifiers = blob
+            self.classifiers, blob = blob, {}
             self.configs = {}
         cfg_path = bundle_dir / "configs.pkl"
         if not self.configs and cfg_path.exists():
@@ -176,8 +190,19 @@ class AgeModel:
                 "classifiers.pkl (see docs/dashboard.md)."
             )
 
+        hp = blob.get("hyperparams") or {}
+        self.feature_kw = {
+            "n_regions": int(hp.get("N_REGIONS", N_REGIONS)),
+            "bins": int(hp.get("COLOR_BINS", COLOR_BINS)),
+            "points": int(hp.get("LBP_POINTS", LBP_POINTS)),
+            "radii": list(hp.get("LBP_RADII", LBP_RADII)),
+        }
+
         support = bundle_dir / "support.npy"
-        self.support = np.load(support) if support.exists() else None
+        if support.exists():
+            self.support = np.load(support)
+        else:
+            self.support = np.asarray(blob["X_train"]) if blob.get("X_train") is not None else None
         needs_support = any(str(c[0]) == "intersection" for c in self.configs.values())
         if needs_support and self.support is None:
             raise ValueError(
@@ -185,6 +210,16 @@ class AgeModel:
                 "Re-export from the notebook with: np.save('support.npy', X_train)"
             )
         self.labels = [c for c in AGE_CLASSES if c in self.classifiers]
+        self.source = str(bundle)
+
+    @classmethod
+    def from_hub(cls, repo_id, cache_dir):
+        from huggingface_hub import hf_hub_download
+        local = hf_hub_download(repo_id=repo_id, filename=cls.HUB_FILE,
+                                local_dir=str(cache_dir), repo_type="model")
+        m = cls(local)
+        m.source = repo_id
+        return m
 
     def predict(self, crops):
         """crops: list[PIL.Image] -> list[{age_label: prob}]
@@ -195,7 +230,7 @@ class AgeModel:
         """
         if not crops:
             return []
-        X = np.vstack([extract_features(c) for c in crops])
+        X = np.vstack([extract_features(c, **self.feature_kw) for c in crops])
         K = intersection_kernel(X, self.support) if self.support is not None else None
         margins = {}
         for label in self.labels:
