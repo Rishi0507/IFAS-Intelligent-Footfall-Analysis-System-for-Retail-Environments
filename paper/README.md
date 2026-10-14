@@ -48,7 +48,7 @@ To time the stages on another machine and refresh the runtime figure:
 ```bash
 python scripts/benchmark_stages.py --video clip.mp4 \
     --gender-ckpt models/hf/abhshkp__footfall-analysis-vit-stage1 \
-    --age-bundle models/age --out paper/figures/runtime.json
+    --age-bundle abhshkp/footfall-analysis-age-svm --out paper/figures/runtime.json
 ```
 
 Then copy the new values into the six `\t...` macros near the top of `ifas.tex`.

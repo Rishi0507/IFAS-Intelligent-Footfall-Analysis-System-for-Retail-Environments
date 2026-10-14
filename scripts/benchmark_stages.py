@@ -1,7 +1,7 @@
 """Time each stage of the pipeline on this machine.
 
     python scripts/benchmark_stages.py --video clip.mp4 \
-        --gender-ckpt models/hf/abhshkp__footfall-analysis-vit-stage1 --age-bundle models/age
+        --gender-ckpt models/hf/abhshkp__footfall-analysis-vit-stage1 --age-bundle abhshkp/footfall-analysis-age-svm
 
 Detection is timed per frame. The two classifiers are timed per person crop, on
 crops the detector actually produced from the video. Every figure is the median
@@ -114,11 +114,14 @@ def main():
             for n in (1, 4, 16)}}
     if a.age_bundle:
         from src.inference.models import AgeModel, extract_features
-        model = AgeModel(a.age_bundle)
+        if Path(a.age_bundle).exists():
+            model = AgeModel(a.age_bundle)
+        else:
+            model = AgeModel.from_hub(a.age_bundle, Path("models/hf") / a.age_bundle.replace("/", "__"))
         one = batch(1)
         result["age"] = {
             "ms_per_crop": _median_ms(lambda: model.predict(one), a.repeats),
-            "ms_features_only": _median_ms(lambda: extract_features(one[0]), a.repeats),
+            "ms_features_only": _median_ms(lambda: extract_features(one[0], **model.feature_kw), a.repeats),
         }
 
     text = json.dumps(result, indent=1)

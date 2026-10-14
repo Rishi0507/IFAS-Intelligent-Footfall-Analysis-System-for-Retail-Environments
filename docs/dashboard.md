@@ -50,15 +50,15 @@ generate runs from the command line instead.
 python -m src.inference.pipeline \
     --video store_entrance.mp4 \
     --out outputs/runs/store-2026-09-07 \
-    --gender-repo abhshkp/footfall-analysis-vit-stage1 \
-    --age-bundle models/age \
+    --gender-repo abhshkp/footfall-analysis-vit-stage2 \
+    --age-bundle abhshkp/footfall-analysis-age-svm \
     --stride 2
 ```
 
 | Flag | Default | What it does |
 | :--- | :--- | :--- |
 | `--gender-repo` / `--gender-ckpt` | – | HuggingFace repo id, or a local checkpoint directory |
-| `--age-bundle` | – | Directory holding the pickled age SVMs (see below) |
+| `--age-bundle` | – | HuggingFace repo id, or a local bundle file or directory (see below) |
 | `--detector` | `yolov8n.pt` | Any Ultralytics weight; `yolov8s.pt` catches more small people |
 | `--det-conf` | `0.4` | What it takes to count a new person. Lower it if people are missed, raise it if shelves get boxed |
 | `--track-conf` | `0.25` | What a detection needs to pick a lost person back up. It never starts a new person |
@@ -76,54 +76,34 @@ dashboard simply shows fewer filled fields.
 
 ### Running the age model
 
-Unlike the gender checkpoint, there is nothing to download - the age SVMs are
-not on the Hub. You need a bundle directory; `models/age/` on this machine is
-already set up.
-
-**Whether you need `support.npy` depends on which kernel the grid search
-picked.** Check first, it saves a lot of work:
-
-```python
-import pickle
-print(pickle.load(open("classifiers.pkl", "rb"))["configs"])
-```
-
-If every attribute says `rbf` (as the current bundle does), the pickle is
-self-contained - copy it into `models/age/` and you are finished. Only an
-`intersection` entry needs the support matrix, because a precomputed-kernel SVM
-can only score against the exact training matrix it was fitted on.
-
-To produce a bundle from scratch:
-
-**1. Run `age_classifier_v3.ipynb`** (Colab, with PETA) through the training
-cells, so `classifiers`, `configs` and `X_train` exist.
-
-**2. Export all three artefacts.** The notebook only pickles the classifiers,
-which is not enough: a **precomputed-kernel** SVM can only score against the
-exact training matrix it was fitted on, so an intersection-kernel bundle needs
-the support matrix as well.
-
-```python
-import pickle, numpy as np, os
-os.makedirs("age_bundle", exist_ok=True)
-with open("age_bundle/classifiers.pkl", "wb") as f:
-    pickle.dump({"classifiers": classifiers, "configs": configs}, f)
-np.save("age_bundle/support.npy", X_train)     # ~40 MB, required for "intersection" configs
-```
-
-If the grid search picked RBF for every attribute, `support.npy` is optional -
-the loader tells you which case you are in rather than failing obscurely.
-
-**3. Copy the directory next to the repo** (for example `models/age/`) and run:
+The trained SVMs are on the Hub at
+[`abhshkp/footfall-analysis-age-svm`](https://huggingface.co/abhshkp/footfall-analysis-age-svm)
+as a single file, `age_classifier_bundle.pkl`. Pass the repo id to
+`--age-bundle` and it is downloaded once into `models/hf/` (like the gender
+checkpoint), then loaded from there without touching the network:
 
 ```bash
 pip install scikit-image        # the LBP texture features need it
-python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip     --gender-repo abhshkp/footfall-analysis-vit-stage1     --age-bundle models/age
+python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm
 ```
 
-In the dashboard's **Process video** dialog, put the same path in the *Age
-bundle directory* field. Age is optional: without it the pipeline still runs
-and the age panels say so instead of showing empty charts.
+The Hub bundle is self-contained. Besides `classifiers` and `configs` it
+carries `X_train` (the support matrix an intersection-kernel SVM needs) and the
+feature `hyperparams` it was trained with (`N_REGIONS`, `COLOR_BINS`,
+`LBP_POINTS`, `LBP_RADII`). The loader extracts features with those, not the
+defaults in `models.py`, so the SVMs always see the feature space they were
+fitted on. The current bundle uses 2 regions and RBF kernels throughout.
+
+`--age-bundle` also takes a local path: the `.pkl` file itself, a directory
+holding it, or a directory in the older hand-exported layout
+(`classifiers.pkl`, plus `configs.pkl` and `support.npy` when the pickle lacks
+them). Such older pickles have no `hyperparams`, so they fall back to the
+defaults in `models.py`, which must then match the notebook run that trained
+them.
+
+In the dashboard's **Process video** dialog the *Age model* field takes the
+same values and defaults to the Hub repo. Age is optional: clear the field and
+the pipeline still runs and the age panels say so instead of showing empty charts.
 
 The feature vector is 550 numbers per crop (5 body regions x (5 colour
 histograms x 16 bins + 3 LBP radii x 10 bins)). If your bundle was trained with
@@ -241,7 +221,7 @@ Periods only mean something once there are many recordings, so adding a day's
 footage is one command:
 
 ```bash
-python scripts/process_folder.py footage/entrance     --site "MG Road" --camera "Entrance"     --gender-repo abhshkp/footfall-analysis-vit-stage1     --age-bundle models/age --no-video
+python scripts/process_folder.py footage/entrance     --site "MG Road" --camera "Entrance"     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm --no-video
 ```
 
 It reads the capture time from each filename (`cam1_2026-09-05_17-30-00.mp4`)

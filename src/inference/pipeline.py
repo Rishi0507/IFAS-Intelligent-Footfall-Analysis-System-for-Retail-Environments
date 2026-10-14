@@ -1,7 +1,7 @@
 """Video -> annotated MP4 + analytics.json.
 
     python -m src.inference.pipeline --video store.mp4 --out outputs/runs/store \
-        --gender-repo abhshkp/footfall-analysis-vit-stage1 --age-bundle models/age
+        --gender-repo abhshkp/footfall-analysis-vit-stage2 --age-bundle abhshkp/footfall-analysis-age-svm
 
 Detection (YOLO) runs on every sampled frame; the two classifiers run on each
 person crop; an IoU tracker turns boxes into people; `analytics.build_analytics`
@@ -75,11 +75,11 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         from ultralytics import YOLO
         detector = YOLO(detector_weights)
 
+    # Shared cache, not the run directory: a 340 MB checkpoint should be
+    # downloaded once, not once per run.
+    cache = Path(cache_dir) if cache_dir else Path(__file__).resolve().parents[2] / "models" / "hf"
     if gender_model is None and gender_repo:
         from .models import GenderModel
-        # Shared cache, not the run directory: a 340 MB checkpoint should be
-        # downloaded once, not once per run.
-        cache = Path(cache_dir) if cache_dir else Path(__file__).resolve().parents[2] / "models" / "hf"
         local = cache / gender_repo.replace("/", "__")
         if (local / "pytorch_model.bin").exists() and (local / "config.json").exists():
             # Already downloaded: load it without touching the network.
@@ -93,7 +93,17 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         gender_model = GenderModel(gender_ckpt, device=device)
     if age_model is None and age_bundle:
         from .models import AgeModel
-        age_model = AgeModel(age_bundle)
+        if Path(age_bundle).exists():
+            age_model = AgeModel(age_bundle)
+        else:
+            # Not a local path, so a Hub repo id, cached like the gender checkpoint.
+            local = cache / str(age_bundle).replace("/", "__")
+            if (local / AgeModel.HUB_FILE).exists():
+                age_model = AgeModel(local / AgeModel.HUB_FILE)
+                age_model.source = age_bundle
+            else:
+                say(stage="downloading age model", pct=0.0)
+                age_model = AgeModel.from_hub(age_bundle, local)
     if gender_model is None and age_model is None:
         raise ValueError("Nothing to classify: pass a gender checkpoint and/or an age bundle.")
 
@@ -407,7 +417,8 @@ def main():
     p.add_argument("--out", default="outputs/runs/latest")
     p.add_argument("--gender-repo", default=None, help="HuggingFace repo id")
     p.add_argument("--gender-ckpt", default=None, help="local checkpoint directory")
-    p.add_argument("--age-bundle", default=None, help="directory with classifiers.pkl")
+    p.add_argument("--age-bundle", default=None,
+                   help="HuggingFace repo id, or a local bundle file or directory")
     p.add_argument("--detector", default="yolov8n.pt")
     p.add_argument("--det-conf", type=float, default=0.4)
     p.add_argument("--track-conf", type=float, default=0.25,

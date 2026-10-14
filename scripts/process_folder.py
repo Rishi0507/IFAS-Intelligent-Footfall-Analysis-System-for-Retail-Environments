@@ -5,8 +5,8 @@ one clip. That only happens if adding a day's footage is a single command:
 
     python scripts/process_folder.py footage/entrance \\
         --site "MG Road" --camera "Entrance" \\
-        --gender-repo abhshkp/footfall-analysis-vit-stage1 \\
-        --age-bundle models/age
+        --gender-repo abhshkp/footfall-analysis-vit-stage2 \\
+        --age-bundle abhshkp/footfall-analysis-age-svm
 
 Each video becomes `outputs/runs/<site>-<camera>-<timestamp>/`. Capture time
 comes from the filename when it looks like a timestamp (most camera exports do:
