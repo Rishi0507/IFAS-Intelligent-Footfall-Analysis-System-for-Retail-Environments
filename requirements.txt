@@ -4,7 +4,9 @@ opencv-contrib-python-headless>=4.8
 ultralytics>=8.1
 torch>=2.1
 torchvision>=0.16
-transformers>=4.40
+# Pinned: transformers has renamed ViT weight keys between versions. Keep this in
+# step with the training notebooks so checkpoints and the loader agree.
+transformers==5.6.2
 pillow>=10.0
 numpy>=1.24
 pyyaml>=6.0
