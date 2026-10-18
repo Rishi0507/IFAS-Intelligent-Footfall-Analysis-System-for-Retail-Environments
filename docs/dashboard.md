@@ -119,10 +119,27 @@ otherwise be fed a feature space they were never fitted on.
 outputs/runs/<run-id>/
 ├── analytics.json    # the whole record - the dashboard reads only this
 ├── video.mp4         # annotated output (unless --no-video)
-└── poster.jpg        # first frame, used as the video poster
+├── poster.jpg        # first frame, used as the video poster
+├── crops.jsonl       # with --export-crops: one line per classified crop
+├── crops/<track>/    # with --export-crops: the crops themselves
+└── labels_<name>.json  # written by the labelling page, one per annotator
 ```
 
 Drop any such directory under `outputs/runs/` and it appears in the run picker.
+
+## Labelling people for the research study
+
+Process a video with **Save person crops for labelling** ticked in the upload dialog (or
+`--export-crops` on the command line). The run then gets a **Label** button in the top bar, which
+opens `label.html`: one person at a time, every crop of them side by side, keyboard first
+(<kbd>F</kbd>/<kbd>M</kbd>/<kbd>U</kbd> for gender, <kbd>1</kbd>-<kbd>4</kbd> and <kbd>0</kbd> for
+age, arrows to move). Every change is saved to `labels_<your name>.json` in the run folder. The
+model's own guesses are hidden on purpose. The protocol is in
+[research-data.md](research-data.md).
+
+`--pooling mean|confidence|quality` changes how a person's votes become one label; the default
+majority vote is unchanged. `quality` needs `--quality-model`, a JSON file that
+`scripts/research/pooling_eval.py` fits on labelled people.
 
 ---
 

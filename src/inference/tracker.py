@@ -72,6 +72,11 @@ class Track:
     first_box: tuple = None           # where the track began; used when a hunch is confirmed
     last_vote_frame: int = -10 ** 9   # gates re-classification; see needs_vote()
     path: list = field(default_factory=list)              # [(frame, cx, cy, area_frac)]
+    # Every vote with the crop's quality cues, for pooling strategies other than
+    # the majority vote (src/research/pooling.py). At most `max_votes` long.
+    vote_log: list = field(default_factory=list)          # [(gender_probs, age_probs, cues)]
+    pooling: str = "majority"
+    quality_model: object = field(default=None, repr=False)
 
     @property
     def center(self):
@@ -85,10 +90,19 @@ class Track:
         total = sum(probs.values()) or 1.0
         return label, probs.get(label, 0.0) / total
 
+    def _pooled(self, which):
+        from ..research.pooling import pool
+        votes = [(v[which], v[2] or {}) for v in self.vote_log if v[which]]
+        return pool(votes, self.pooling, model=self.quality_model) if votes else (None, 0.0)
+
     def gender(self):
+        if self.pooling != "majority":
+            return self._pooled(0)
         return self._top(self.gender_votes, self.gender_prob_sum)
 
     def age(self):
+        if self.pooling != "majority":
+            return self._pooled(1)
         return self._top(self.age_votes, self.age_score_sum)
 
     def observe(self, box, frame_idx, det_conf, frame_area):
@@ -110,8 +124,10 @@ class Track:
         """
         return self.n_classified < cap and frame_idx - self.last_vote_frame >= every
 
-    def vote(self, gender_probs=None, age_probs=None, frame_idx=None):
+    def vote(self, gender_probs=None, age_probs=None, frame_idx=None, cues=None):
         """Accumulate one frame's classifier output. Votes beat any single frame."""
+        if gender_probs or age_probs:
+            self.vote_log.append((gender_probs, age_probs, cues))
         counted = False
         if gender_probs:
             for k, v in gender_probs.items():
@@ -134,7 +150,7 @@ class Track:
 class IoUTracker:
     def __init__(self, iou_thresh=0.3, max_misses=30, rejoin_frames=0,
                  new_track_conf=0.0, rejoin_conf=0.0, tentative_conf=None,
-                 frame_size=None, edge_margin=0.12):
+                 frame_size=None, edge_margin=0.12, pooling="majority", quality_model=None):
         """
         rejoin_frames   how long (in video frames) a lost person can still be
                         picked up again; 0 turns re-joining off
@@ -144,7 +160,15 @@ class IoUTracker:
                         open a tentative track; None ignores them
         frame_size      (width, height); needed to tell the interior of the
                         frame from its edges, where people really do leave
+        pooling         how a person's votes become one label: "majority" (the
+                        default), "mean", "confidence" or "quality"; see
+                        src/research/pooling.py
+        quality_model   a fitted pooling.QualityModel, needed for "quality"
         """
+        if pooling == "quality" and quality_model is None:
+            raise ValueError("pooling='quality' needs a quality_model")
+        self.pooling = pooling
+        self.quality_model = quality_model
         self.iou_thresh = iou_thresh
         self.max_misses = max_misses
         self.rejoin_frames = rejoin_frames
@@ -278,6 +302,7 @@ class IoUTracker:
             area = (box[2] - box[0]) * (box[3] - box[1])
             t = Track(id=self.next_id, box=box, first_frame=frame_idx, last_frame=frame_idx,
                       det_conf_sum=conf, confirmed=sure, conf_max=conf, first_box=box,
+                      pooling=self.pooling, quality_model=self.quality_model,
                       path=[(frame_idx, round(cx, 1), round(cy, 1),
                              round(area / frame_area, 5))])
             self.next_id += 1

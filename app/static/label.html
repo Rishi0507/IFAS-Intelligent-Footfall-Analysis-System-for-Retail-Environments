@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IFAS Labelling</title>
+<link rel="preload" href="fonts/inter-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="label.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%2315172e'/><path d='M9 22v-6M16 22V10M23 22v-9' stroke='%23ff9a62' stroke-width='3.2' stroke-linecap='round'/></svg>">
+<script>
+  try {
+    const t = localStorage.getItem('ifas-theme');
+    if (t) document.documentElement.dataset.theme = t;
+  } catch (e) { /* storage blocked: follow the OS */ }
+</script>
+</head>
+<body class="label-page">
+
+<header class="bar">
+  <a class="brand" href="./" aria-label="IFAS, back to the dashboard">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="10" fill="var(--accent)"/>
+      <path d="M9 22v-6M16 22V10M23 22v-9" stroke="var(--accent-ink)" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <b>IFAS</b>
+  </a>
+  <span class="bar-title">Label people</span>
+  <span class="spacer"></span>
+  <label class="bar-field">
+    <span class="flabel">Recording</span>
+    <select id="run" aria-label="Recording to label"></select>
+  </label>
+  <label class="bar-field">
+    <span class="flabel">Your name</span>
+    <input type="text" id="annotator" placeholder="e.g. rishi" maxlength="32"
+           pattern="[A-Za-z0-9_\-]{1,32}" autocomplete="off" spellcheck="false"
+           aria-describedby="annotator-help">
+  </label>
+</header>
+
+<main class="label-main">
+  <section class="card label-empty" id="empty" hidden>
+    <h3>Nothing to label yet</h3>
+    <p class="sub">Labelling works on recordings processed with crop export on. Tick
+      <b>Save person crops for labelling</b> when you upload a video on the dashboard, or run
+      <code>python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip --export-crops ...</code></p>
+    <a class="back" href="./">Back to the dashboard</a>
+  </section>
+
+  <section class="label-work" id="work" hidden>
+    <div class="card person" aria-live="polite">
+      <header>
+        <h3 id="person-title">Person</h3>
+        <span class="badge" id="person-meta"></span>
+        <span class="spacer"></span>
+        <span class="save-state" id="save-state" role="status"></span>
+      </header>
+      <p class="sub" id="annotator-help">Label what you can see. Use <b>Unsure</b> when the crops do
+        not show it; unsure people are left out of the accuracy figures. The model's guesses are
+        hidden on purpose.</p>
+
+      <div class="strip" id="strip" tabindex="0" aria-label="Crops of this person"></div>
+
+      <div class="answers">
+        <div class="answer">
+          <span class="flabel">Gender</span>
+          <div class="seg" id="seg-gender" role="group" aria-label="Gender">
+            <button type="button" data-value="female" aria-pressed="false">Female <kbd>F</kbd></button>
+            <button type="button" data-value="male" aria-pressed="false">Male <kbd>M</kbd></button>
+            <button type="button" data-value="unsure" aria-pressed="false">Unsure <kbd>U</kbd></button>
+          </div>
+        </div>
+        <div class="answer">
+          <span class="flabel">Age group</span>
+          <div class="seg" id="seg-age" role="group" aria-label="Age group">
+            <button type="button" data-value="Age16-30" aria-pressed="false">16 to 30 <kbd>1</kbd></button>
+            <button type="button" data-value="Age31-45" aria-pressed="false">31 to 45 <kbd>2</kbd></button>
+            <button type="button" data-value="Age46-60" aria-pressed="false">46 to 60 <kbd>3</kbd></button>
+            <button type="button" data-value="AgeAbove61" aria-pressed="false">Over 60 <kbd>4</kbd></button>
+            <button type="button" data-value="unsure" aria-pressed="false">Unsure <kbd>0</kbd></button>
+          </div>
+        </div>
+        <label class="answer note">
+          <span class="flabel">Note <kbd>N</kbd></span>
+          <input type="text" id="note" maxlength="500" placeholder="Optional, e.g. two people in one box">
+        </label>
+      </div>
+
+      <footer class="person-nav">
+        <button type="button" id="prev">&larr; Previous</button>
+        <label class="switch"><input type="checkbox" id="auto" checked> Next person once both are set</label>
+        <span class="spacer"></span>
+        <button type="button" class="primary" id="next">Next &rarr;</button>
+      </footer>
+    </div>
+
+    <aside class="card roster">
+      <header>
+        <h3>People</h3>
+        <span class="spacer"></span>
+        <span class="count" id="progress"></span>
+      </header>
+      <div class="meter" aria-hidden="true"><span id="meter"></span></div>
+      <div class="roster-grid" id="roster" role="list"></div>
+      <p class="keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> move between people,
+        <kbd>F</kbd> <kbd>M</kbd> <kbd>U</kbd> gender, <kbd>1</kbd>&ndash;<kbd>4</kbd> and
+        <kbd>0</kbd> age. Every change is saved straight away.</p>
+    </aside>
+  </section>
+</main>
+
+<script src="label.js"></script>
+</body>
+</html>
