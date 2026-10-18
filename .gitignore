@@ -23,3 +23,6 @@ outputs/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Research datasets (licensed for research use; never commit or redistribute)
+data/
