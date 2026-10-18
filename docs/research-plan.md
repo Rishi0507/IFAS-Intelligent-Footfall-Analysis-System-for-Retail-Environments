@@ -152,7 +152,7 @@ Sizes: **S** ≈ 1 day, **M** ≈ 2–3 days, **L** ≈ 4–5 days. Each person 
 | A2 | **Labelling page.** `app/static/label.html` + `label.js` in the dashboard's style. Show one person at a time as a strip of their crops, with keyboard shortcuts for gender and age. Add `GET /api/runs/{id}/crops` and `POST /api/runs/{id}/labels` to `app/server.py`, reusing the `_run_dir` path guard. | M | A headless-Chrome test labels two people and the file appears with the right content. |
 | A3 | **Retail clips.** Record 3–5 clips (different cameras or stores, about 150–300 people in total) **with written permission**. Keep them separate from the stage-2 training data on Drive. Split them: test clips for labelling, and other clips whose unlabelled frames go to B for FDA. Write down the source, consent and split in `docs/research-data.md`. | M | Clips processed with `--export-crops`; FDA frames handed to B; data note committed (footage itself stays out of git). |
 | A4 | **Quality cues.** `src/research/quality.py`: FFT sharpness, Laplacian variance, Farneback motion, truncation, occlusion, size. | M | Unit tests: sharpness falls monotonically as blur grows; motion is ~0 on a static frame pair and positive on a shifted one. |
-| A5 | **Pooling study.** `src/research/pooling.py` (strategies as pure functions over `[(probs, cues)]`) and `scripts/research/pooling_eval.py`. Fit the logistic quality model on MARS (from B2) or with cross-validation over retail persons. Report per-person accuracy for each strategy, accuracy vs k, and the gain on truncated/occluded subsets. | L | Writes `paper/results/rq3_pooling.json` with confidence intervals from B7; tests pass on synthetic tracks with known answers. |
+| A5 | **Pooling study.** `src/research/pooling.py` (strategies as pure functions over `[(probs, cues)]`) and `scripts/research/pooling_eval.py`. Fit the logistic quality model on MARS (from B2) or with cross-validation over retail persons. Report per-person accuracy for each strategy, accuracy vs k, and the gain on truncated/occluded subsets. Include a **learned temporal-attention baseline** (a small attention head over frozen per-frame features, trained on MARS train), because that is what video attribute papers use; reviewers will ask how hand-measured quality weights compare. | L | Writes `paper/results/rq3_pooling.json` with confidence intervals from B7; tests pass on synthetic tracks with known answers. |
 | A6 | **Back into the product.** If quality weighting wins, add `pooling=` to `process_video` with the majority vote kept as an option. | S | Default changed only if A5 shows a significant gain; `pytest` stays green. |
 | A7 | **Tests** for A1–A6 in `tests/test_research_pooling.py` and `tests/test_label_api.py`. | S | Full `pytest` green. |
 
@@ -160,8 +160,9 @@ Sizes: **S** ≈ 1 day, **M** ≈ 2–3 days, **L** ≈ 4–5 days. Each person 
 
 | ID | Task | Size | Done when |
 | :- | :--- | :-: | :--- |
-| B1 | **Lock versions and re-baseline.** Pin `transformers` in `requirements.txt` and in both training notebooks, so checkpoint and loader key names cannot drift apart again. Re-run every pipeline-based gender number with the fixed loader. | S | Pinned version installed cleanly; old vs new numbers recorded. |
-| B2 | **Public video dataset.** Check availability and licence for the MARS video attribute annotations (Chen et al., 2019) **before** depending on them. Write `scripts/research/get_mars.py`. Gender maps directly. Age maps only coarsely (child / teen / adult / old), so report age on MARS as adult vs old only. If MARS is not usable, fall back to PETA-only for the large-scale side and say so. | M | Script downloads and verifies the data; mapping documented in `docs/research-data.md`. |
+| B1 | **Lock versions and re-baseline.** Pin `transformers` in `requirements.txt` and in both training notebooks, so checkpoint and loader key names cannot drift apart again. Re-run every pipeline-based gender number with the fixed loader. | S | **Done**: pinned to 5.6.2; `paper/results/b1_gender_rebaseline.json`. |
+| B2 | **Public video dataset.** Use the tracklet-level MARS-Attribute labels from `github.com/yuange250/MARS-Attribute` (`mars_attributes.csv`; the IRIP link in the original paper is dead). They have no licence file, and MARS itself is for research use only, so cite both and do not redistribute. Write `scripts/research/get_mars.py`. Gender maps directly. Age is young / teenager / adult / old, so report age on MARS as adult vs old only. MARS crops come from a detector and tracker, which suits RQ3. If MARS is not usable, fall back to PETA-only for the large-scale side and say so. | M | Script downloads and verifies the data; mapping documented in `docs/research-data.md`. |
+| B2b | **RAP (optional, strongly recommended).** RAP was filmed by indoor surveillance cameras in a shopping mall. Its age bands (under 16, 17–30, 31–45, 46–60, over 60) match PETA's almost exactly, and it labels gender. That makes it a labelled retail-like target domain for RQ1 and RQ2 at no labelling cost. Access needs a signed research agreement from its authors: request it in Phase 1. | S + wait | Access granted; RAP added as a domain in B4 and as an FDA target in B6. |
 | B3 | **Degradation suite.** `src/research/degrade.py`: downscale (48 / 32 / 24 / 16 px wide), Gaussian and motion blur, JPEG quality, bottom truncation (25 / 50 %), synthetic occlusion. Seeded and deterministic. | S | Tests: same seed gives the same output; output size and range are valid. |
 | B4 | **Gap measurement.** `scripts/research/eval_frames.py` runs `GenderModel.predict` and `AgeModel.predict` (`src/inference/models.py`, unchanged) on every domain. `src/research/spectrum.py` computes radially averaged power spectra and the per-crop high-frequency ratio. | M | Writes `frames_<domain>.jsonl` and `paper/results/rq1_gap.json`; spectrum and accuracy-vs-degradation figures render. |
 | B5 | **Adaptation transforms.** `degrade_transform` and `fda_transform(target_frames, beta)` in `src/training/transforms.py`. Add a condition switch to `TrainConfig` and a notebook cell. | M | Tests: FDA keeps the shape and the phase spectrum; `beta = 0` returns the input unchanged. |
@@ -191,9 +192,28 @@ The long pole is A3 + S2: recording and labelling the retail clips. Start record
 
 ## 6. Before you start
 
-- Merge the fixes that ship with this plan first: the gender loader fix, the age model loaded
-  from the Hub with its own feature settings, the Flat view fix and stage 2 as the default
-  gender model.
+- The gender loader fix, the age model loaded from the Hub with its own feature settings,
+  the Flat view fix and stage 2 as the default gender model are merged (PR #1).
 - Never use stage-2 training clips as test data. Results on them would be inflated.
 - Footage and labels stay out of git (`outputs/` and `models/` are already ignored). Commit code,
   results JSON and figures only.
+
+## 7. Literature check (2026-10-18)
+
+A quick search for prior work on each claim. It is not a full survey; Related Work (S3) must
+still read and cite these properly.
+
+| Our claim | Closest prior work found | Gap we fill |
+| :--- | :--- | :--- |
+| RQ1: PAR models lose accuracy across domains | Cross-domain PAR is an established setting: a CD-PAR baseline with adversarial domain alignment, evaluated on transfers including PETA ([PMC12944462](https://pmc.ncbi.nlm.nih.gov/articles/PMC12944462/)); the MSP60K cross-domain benchmark ([AAAI 2025](https://dl.acm.org/doi/10.1609/aaai.v39i4.32434)) | Those works measure dataset-to-dataset transfer. We measure the gap to live retail CCTV and decompose it by cause (resolution, blur, truncation, occlusion) with controlled degradations and FFT spectra. |
+| RQ2: close the gap without target labels | Adversarial alignment (CD-PAR above). FDA has been used for nighttime pedestrian *detection* ([ResearchGate](https://www.researchgate.net/publication/365334449_Fourier_domain_adaptation_for_nighttime_pedestrian_detection_using_Faster_R-CNN)). | No application of Fourier Domain Adaptation to attribute recognition found. FDA needs no extra network or adversarial training, and we compare it directly with supervised stage-2 fine-tuning. |
+| RQ3: pool per-frame predictions over a track | Video PAR on MARS with learned temporal attention ([Chen et al.](https://www.researchgate.net/publication/330466115_Video-Based_Pedestrian_Attribute_Recognition)), occlusion-aware group-sparse attention ([PMC9460213](https://pmc.ncbi.nlm.nih.gov/articles/PMC9460213/)), CLIP-guided fusion ([VTF](https://arxiv.org/pdf/2304.10091)), side tuning ([2404.17929](https://arxiv.org/pdf/2404.17929)). In face and re-ID video, quality-aware aggregation exists ([C-FAN](https://arxiv.org/pdf/1902.07327), [CSA-Net](https://arxiv.org/pdf/2207.02631)). | No video PAR method found that weights frames by *measured* image quality. Ours is training-free on top of any frame classifier, interpretable, and must be compared against a learned attention baseline (A5). |
+
+Two reviewer-facing risks to address in the paper:
+
+1. **"Why not just train a video PAR model?"** Answer with deployment constraints: the frame
+   classifier is fixed and shared with the product, the quality weights need no video labels,
+   and we report the learned-attention baseline (A5) side by side.
+2. **"One store is not a benchmark."** Use public data for scale and statistics (MARS, and RAP
+   if access is granted) and the retail clips for realism. Report confidence intervals
+   throughout (B7).
