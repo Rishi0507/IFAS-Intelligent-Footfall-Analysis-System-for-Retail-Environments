@@ -144,7 +144,8 @@ The steps, in order:
    python scripts/research/fda_frames.py footage/fda --per-clip 200 --out data/fda_frames
    ```
 
-   Upload `data/fda_frames/` to Drive for `run_rq2.py --fda-target-dir`.
+   Upload `data/fda_frames/` to Drive as the `fda_targets/` folder that
+   `research_rq2_training.ipynb` reads (`--fda-dir` in `src/research/rq2.py`).
 
 6. **Features for the attention baseline.** After labelling (Section 4):
 

@@ -79,8 +79,8 @@ Each of these needs a decision from the authors.
    confirmed, change Section IV-A to "the 14,436 images of the nine subsets
    other than CUHK", and CUHK becomes a held-out test that neither model has
    seen: `results/rq1_gap.json` has both models on all 4,563 CUHK images. The
-   notebook cell is fixed now and loads all 18,999 gender-labelled images;
-   `run_rq2.py` uses `make_peta_split.py`, which was right from the start.
+   RQ2 runs do not use that notebook cell: `src/research/rq2.py` trains from
+   raw PETA through `src/research/peta.py`, which reads every subset.
 
 1. **Headline gender accuracy.** The paper quotes 97.8%, the best run of the
    linear probe study (4 probe + 3 fine-tune epochs), and now says it is not a
@@ -88,14 +88,15 @@ Each of these needs a decision from the authors.
    reported on. The learning rate study reached 98.3% with one more epoch of
    fine-tuning. Quote whichever run matches the final model.
 2. **Gender training schedule.** Table I lists 4 probe epochs, weight decay 0.3
-   and warmup 0.2, the values the study selected. `TrainConfig` and both
-   training notebooks now use these too (ported from the team's commit
-   35c900f). Still confirm which settings the released Hub checkpoint was
-   trained with; if it predates that change, say so in the table.
+   and warmup 0.2, the values the study selected. `TrainConfig` and the
+   training notebooks in this repository still default to 3 epochs, 0.01 and
+   0.1; the team's repository has the study's values (commit 35c900f). Confirm
+   which settings the released Hub checkpoint was trained with, and make
+   Table I match.
 3. **No gender test result.** The gender notebooks have no stored outputs, so the
    paper has validation accuracy only and lists that as a limitation.
-   `scripts/research/run_rq2.py` produces a held-out result on the
-   identity-disjoint split as part of RQ2; it needs a GPU (task B6).
+   `src/research/rq2.py` (run from `research_rq2_training.ipynb`) produces a
+   held-out result on the identity split as part of RQ2; it needs a GPU (B6).
 4. **Two age configurations.** The test results come from the released model
    (5 regions, 8 LBP points, 550 features), because that is what the notebook
    evaluated. The sensitivity study selects 4 regions and 16 points. The paper
@@ -105,8 +106,9 @@ Each of these needs a decision from the authors.
    labels (carried over from Draft 4) has been removed, because there is no
    code for it in this repository. Put it back only if it gets implemented.
 6. **Stage 2.** The paper describes the second fine-tuning stage as part of the
-   design and says it is not evaluated. RQ2 condition 4 in `run_rq2.py`
-   evaluates it once labelled store crops exist.
+   design and says it is not evaluated. RQ2 conditions 4 and 5 (stage 2 on
+   labelled store crops) need those crops first; the RQ2 runner covers the
+   four conditions that need no store labels.
 7. **Person detector for the age model.** Draft 4 named Faster R-CNN, which is
    what the age notebook uses for its own video test. The paper describes the
    integrated pipeline, where both classifiers share the YOLOv8n detections.

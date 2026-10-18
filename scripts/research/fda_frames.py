@@ -3,8 +3,9 @@
     python scripts/research/fda_frames.py footage/fda --per-clip 200 --out data/fda_frames
 
 Takes frames evenly spread over each clip in a folder (or the clips named) and
-writes them as JPEGs to `--out`, which is what `fda_target_dir` in
-train_stage1.ipynb and `run_rq2.py --fda-target-dir` read. FDA uses only the
+writes them as JPEGs to `--out`, the folder the RQ2 runs read as FDA targets
+(`fda_targets/` in research_rq2_training.ipynb, `--fda-dir` in
+src/research/rq2.py, or `transforms.target_frames`). FDA uses only the
 frames' low-frequency amplitude (colour and lighting), so no person in them is
 labelled or scored. A manifest beside the frames records each clip's name,
 SHA-1 and the frame numbers taken, so `check_data.py` can prove that no FDA clip

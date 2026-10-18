@@ -255,12 +255,12 @@ Everything that can be done without new footage, labels or a GPU is done and cov
 | A6 | Done, default unchanged | `process_video(pooling=..., quality_model=...)`, `--pooling`, `--quality-model`. Majority vote stays the default until A5 shows a significant gain |
 | A7 | Done | tests above, plus the attention baseline, `fda_frames.py`, the FDA loader and `check_data.py` in `tests/test_research_pooling.py` |
 | B1 | Done | `transformers==5.6.2` pinned in `requirements.txt`, `test_model.ipynb` and both training notebooks. Field check re-run: identical (`paper/results/b1_rebaseline.json`); 97 s clip before and after: `paper/results/b1_gender_rebaseline.json` |
-| B2 | Code done (PR #8, #9), **needs the MARS images** | `src/research/mars.py` and `scripts/research/get_mars.py labels / index / sheet` write `data/mars/tracklets.jsonl`. The images come from the MARS authors by hand. Confirm the gender code with the contact sheet before reporting. `read_mars_index` in `src/research/data.py` feeds `eval_frames.py` and `extract_features.py` |
-| B3 | Done (PR #6) | `src/research/degrade.py` (`SUITE`, `apply`, `iter_suite`); `eval_frames.py --domain peta-degraded` runs every cell |
+| B2 | Code done, **needs the MARS images** | `src/research/mars.py` and `scripts/research/get_mars.py labels / index / sheet` write `data/mars/tracklets.jsonl`. The images come from the MARS authors by hand. Confirm the gender code with the contact sheet before reporting. `read_mars_index` in `src/research/data.py` feeds `eval_frames.py` and `extract_features.py` |
+| B3 | Done | `src/research/degrade.py` (`SUITE`, `apply`, `iter_suite`); `eval_frames.py --domain peta-degraded` runs every cell |
 | B4 | Code done, **needs a GPU for the full sweep** | `src/research/spectrum.py` (the radial spectrum and `high_freq_ratio`, plus `hf_ratio` and `mean_log_spectrum` measured at the model's input size), `scripts/research/eval_frames.py --domain peta / peta-degraded / retail / mars` |
-| B5 | Done (PR #7) | `RandomDegrade`, `FourierStyle` and `build_transforms(condition=...)` in `src/training/transforms.py`, with `target_frames` to pick FDA frames evenly from a folder; `TrainConfig.condition`; a condition cell in `train_stage1.ipynb` |
-| B6 | Code done, **needs a GPU** | `scripts/research/run_rq2.py` (5 conditions x 3 seeds, held-out PETA test, retail per person); the age degraded-feature cells at the end of `age_classifier_v3.ipynb` |
-| B7 | Done | `src/research/stats.py` (the team's version, with `ci`, `accuracy`, `one_vs_rest_mA`, `ordinal_metrics` and `auc` added for the RQ1 and RQ3 scripts and group resampling added to `bootstrap_ci`). Tests: `tests/test_research_stats.py` |
+| B5 | Done | `RandomDegrade`, `FourierStyle` and `build_transforms(condition=...)` in `src/training/transforms.py`, with `target_frames` to pick FDA frames evenly from a folder |
+| B6 | Code done, **needs a GPU** | `src/research/rq2.py` and `research_rq2_training.ipynb` (the four conditions without store labels, held-out PETA test, every degradation, per-seed McNemar); the age degraded-feature cells at the end of `age_classifier_v3.ipynb`. Stage 2 (conditions 4 and 5) waits for labelled store crops |
+| B7 | Done | `src/research/stats.py`, with `ci`, `grouped_bootstrap_ci`, `accuracy`, `one_vs_rest_mA`, `ordinal_metrics` and `auc` added below the existing functions for the RQ1 and RQ3 scripts. Tests: `tests/test_research_stats.py` |
 | B8 | Done | tests above, with `tests/test_research_degrade.py`, `test_research_spectrum.py` and `test_research_mars.py` |
 | S2 | **Needs people** | Label in the labelling page; `scripts/research/agreement.py` for kappa; save agreed labels as `labels_final.json` |
 | S3 | A's part drafted, **needs results** | `paper/sections/system.tex`, `rq3.tex`, `ethics.tex`, `limitations.tex`, built on their own by `paper/draft_personA.tex`. Every RQ3 number is a `\rqthree{task}{key}` macro that `make_figures.py` writes to `figures/rq3_numbers.tex` from `rq3_pooling.json`; missing numbers print as **??**, and the sentences that depend on the outcome are marked TODO. B's part and the joint parts wait for RQ1 and RQ2 results |
@@ -269,15 +269,16 @@ Everything that can be done without new footage, labels or a GPU is done and cov
 Two additions beyond the original task list:
 
 * `scripts/research/make_peta_split.py` builds an identity-disjoint PETA split, because the paper's
-  numbers come from image-level splits that put the same people in training and test. RQ1 and
-  RQ2 should use it, and the held-out gender test result in B6 comes from it.
+  numbers come from image-level splits that put the same people in training and test. It
+  produced the overlap measurements in `docs/research-data.md` and the CUHK results; the RQ2 runs
+  use `src/research/peta.py`'s identity split.
 * `scripts/research/agreement.py` computes the kappa S2 asks for.
 * Building the split exposed a data bug: until now, `train_stage1.ipynb`'s loader kept only PETA's
   CUHK subset (4,563 of 19,000 images), and the age notebook's kept everything except CUHK. The
-  gender loader is fixed. The published Stage 1 checkpoint scores 100% on the nine non-CUHK
+  RQ2 runs do not depend on that cell. The published Stage 1 checkpoint scores 100% on the nine non-CUHK
   subsets and 92% on CUHK, so it was trained without CUHK (`paper/README.md`, item 0). CUHK is
   therefore held out for both released models, and RQ1's PETA numbers for them come from CUHK.
-  For B6, train on the identity-disjoint split, not on an old `labels.csv`.
+  B6 trains on the identity split from `src/research/peta.py`, not on an old `labels.csv`.
 
 ### 8.1 Person A, end to end
 
