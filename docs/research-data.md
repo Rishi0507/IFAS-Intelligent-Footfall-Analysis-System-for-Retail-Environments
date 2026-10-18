@@ -9,10 +9,19 @@ ignores: none of them may be committed or redistributed.
 Deng et al., ACM MM 2014. 19,000 images from ten surveillance datasets. Already
 used by the training notebooks on Colab.
 
-- **Split.** Use the standard PETA split of 9,500 train / 1,900 validation /
-  7,600 test, the one `age_classifier_v3.ipynb` uses. The stage-1 gender
-  notebook only holds out a 10 % validation set and has **no test split**. B6
-  must fix this; it is why the paper has no gender test result.
+- **Split.** `src/research/peta.py` builds two splits in the standard
+  9,500 / 1,900 / 7,600 proportions, written together to one CSV
+  (`peta_split.csv`, kept on Drive and shared by every run):
+  - `split_identity` (**primary**): every image of a person in one split, gender
+    balanced. The test set holds only unseen people.
+  - `split_image`: an image-level random split like the original notebooks use,
+    in which people leak between train and test. Kept only to measure how much
+    that leak inflates accuracy (one baseline run in `research_rq2_training.ipynb`).
+
+  The released models were trained on image-level splits, and the stage-1 gender
+  notebook held out only a 10 % validation set with **no test split**, which is
+  why the paper has no gender test result. Retrain the age model on
+  `split_identity` too, so gender and age are tested on the same people.
 
 ## MARS with MARS-Attribute labels (RQ1 and RQ3)
 
