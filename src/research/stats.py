@@ -163,3 +163,103 @@ def mean_sd(values):
         raise ValueError("no values")
     sd = float(np.std(v, ddof=1)) if len(v) > 1 else 0.0
     return float(np.mean(v)), sd
+
+# --------------------------------------------------------------------------
+# Additions for the RQ1 and RQ3 scripts
+# --------------------------------------------------------------------------
+# Per-crop results (RQ1, RQ3) have several rows per person. `grouped_bootstrap_ci`
+# resamples whole persons, so the crops of one person move together; `ci` gives
+# an interval in the {"value", "lo", "hi", "n"} form the results JSON stores.
+AGE_ORDER = ["Age16-30", "Age31-45", "Age46-60", "AgeAbove61"]
+
+
+def grouped_bootstrap_ci(metric, *arrays, groups, n_boot=2000, alpha=0.05, seed=0):
+    """Percentile bootstrap CI of `metric(*arrays)` resampling whole groups.
+
+    `groups` holds one id per row (e.g. the person). Returns (point, lower, upper).
+    """
+    arrays = [np.asarray(a) for a in arrays]
+    n = len(arrays[0])
+    if n == 0 or any(len(a) != n for a in arrays) or len(groups) != n:
+        raise ValueError("arrays and groups must be non-empty and the same length")
+    _, inverse = np.unique(np.asarray(groups), return_inverse=True)
+    members = [np.flatnonzero(inverse == i) for i in range(inverse.max() + 1)]
+    rng = np.random.default_rng(seed)
+    point = float(metric(*arrays))
+    stats = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = np.concatenate([members[j] for j in rng.integers(0, len(members), len(members))])
+        try:
+            stats[i] = metric(*(a[idx] for a in arrays))
+        except ValueError:          # e.g. a resample without one of the classes
+            stats[i] = np.nan
+    stats = stats[~np.isnan(stats)]
+    if len(stats) == 0:
+        raise ValueError("metric failed on every bootstrap resample")
+    lo, hi = np.quantile(stats, [alpha / 2, 1 - alpha / 2])
+    return point, float(lo), float(hi)
+
+
+def ci(metric, *arrays, groups=None, **kw):
+    """A bootstrap interval as {"value", "lo", "hi", "n"}, the form the results
+    JSON stores; n is the number of resampled units (people when `groups` is
+    given). Empty input gives NaNs and n = 0, so a missing subset does not stop
+    a run."""
+    n = len(np.unique(np.asarray(groups))) if groups is not None else len(arrays[0])
+    nan = {"value": float("nan"), "lo": float("nan"), "hi": float("nan"), "n": int(n)}
+    if n == 0:
+        return nan
+    try:
+        if groups is None:
+            value, lo, hi = bootstrap_ci(metric, *arrays, **kw)
+        else:
+            value, lo, hi = grouped_bootstrap_ci(metric, *arrays, groups=groups, **kw)
+    except ValueError:
+        return nan
+    return {"value": value, "lo": lo, "hi": hi, "n": int(n)}
+
+
+def accuracy(y_true, y_pred):
+    """Share of exact matches; NaN for no items."""
+    t, p = np.asarray(y_true), np.asarray(y_pred)
+    return float(np.mean(t == p)) if len(t) else float("nan")
+
+
+def one_vs_rest_mA(y_true, y_pred, labels):
+    """mA of each class read as its own binary attribute, and their mean.
+
+    A class with no positives (or no negatives) in y_true gets NaN.
+    """
+    t, p = np.asarray(y_true), np.asarray(y_pred)
+    per = {}
+    for c in labels:
+        try:
+            per[c] = mean_accuracy(t == c, p == c)[0]
+        except ValueError:
+            per[c] = float("nan")
+    vals = [v for v in per.values() if not math.isnan(v)]
+    return per, (float(np.mean(vals)) if vals else float("nan"))
+
+
+def ordinal_metrics(y_true, y_pred, order=AGE_ORDER):
+    """Age groups given by name: exact, off-by-one and mean groups off."""
+    pos = {c: i for i, c in enumerate(order)}
+    t = [pos[c] for c in y_true]
+    p = [pos[c] for c in y_pred]
+    if not t:
+        return {"exact": float("nan"), "off_by_one": float("nan"), "mae_groups": float("nan")}
+    return {"exact": accuracy(t, p), "off_by_one": off_by_one_accuracy(t, p),
+            "mae_groups": mean_absolute_group_error(t, p)}
+
+
+def auc(scores, positives):
+    """Area under the ROC curve: the chance a random positive outscores a random
+    negative, ties counted half. NaN when one of the classes is missing."""
+    s = np.asarray(scores, dtype=float)
+    y = np.asarray(positives, dtype=bool)
+    n1, n0 = int(y.sum()), int((~y).sum())
+    if n1 == 0 or n0 == 0:
+        return float("nan")
+    from scipy.stats import rankdata
+    ranks = rankdata(s)                             # average ranks over ties
+    return float((ranks[y].sum() - n1 * (n1 + 1) / 2.0) / (n1 * n0))

@@ -1,0 +1,77 @@
+{
+ "meta": {
+  "commit": "28f2b92",
+  "date": "2026-10-15T01:49:23",
+  "models": [
+   "abhshkp/footfall-analysis-vit-stage1 (local cache)"
+  ],
+  "seeds": [
+   0
+  ],
+  "task": "Which PETA images did the stage-1 gender checkpoint train on?",
+  "method": "200 random CUHK images and 200 images spread over the other nine subsets (data/PETA/split_identity_all.csv, numpy seed 0). A fine-tuned ViT is close to perfect on its own training images.",
+  "conclusion": "100% (confidence 0.9997) on the nine subsets against 92% (balanced 89%, confidence 0.981) on CUHK: the checkpoint behaves as if trained on the nine non-CUHK subsets (about 14,400 images) and not on CUHK. Not CUHK-only, and probably not all 19,000. Confirm with the Colab log or history.json."
+ },
+ "rows": [
+  {
+   "sample": "CUHK",
+   "n": 200,
+   "accuracy": 0.92,
+   "balanced_accuracy": 0.8928774928774929,
+   "mean_confidence": 0.9809497949481011,
+   "per_subset": {
+    "CUHK": [
+     0.92,
+     200
+    ]
+   },
+   "seconds": 159.9
+  },
+  {
+   "sample": "other nine subsets",
+   "n": 200,
+   "accuracy": 1.0,
+   "balanced_accuracy": 1.0,
+   "mean_confidence": 0.9996572330594062,
+   "per_subset": {
+    "3DPeS": [
+     1.0,
+     23
+    ],
+    "CAVIAR4REID": [
+     1.0,
+     23
+    ],
+    "GRID": [
+     1.0,
+     23
+    ],
+    "MIT": [
+     1.0,
+     23
+    ],
+    "PRID": [
+     1.0,
+     23
+    ],
+    "SARC3D": [
+     1.0,
+     23
+    ],
+    "TownCentre": [
+     1.0,
+     23
+    ],
+    "VIPeR": [
+     1.0,
+     16
+    ],
+    "i-LID": [
+     1.0,
+     23
+    ]
+   },
+   "seconds": 159.3
+  }
+ ]
+}

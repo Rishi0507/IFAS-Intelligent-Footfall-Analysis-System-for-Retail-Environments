@@ -26,3 +26,7 @@ Thumbs.db
 
 # Research datasets (licensed for research use; never commit or redistribute)
 data/
+
+# Footage and checkpoints (docs/research-data.md: footage and labels stay out of git)
+checkpoints/
+footage/

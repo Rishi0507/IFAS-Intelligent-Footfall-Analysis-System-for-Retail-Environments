@@ -1,0 +1,123 @@
+{
+ "meta": {
+  "commit": "28f2b92",
+  "date": "2026-10-14T20:44:55",
+  "models": [
+   "abhshkp/footfall-analysis-vit-stage1",
+   "models/age"
+  ],
+  "seeds": [],
+  "task": "B1: re-run the pipeline-based gender numbers (paper Section IV-G) with the strict loader",
+  "clip": "vidssave.com 4MP PTZ Camera with Night Vision & Motion Detection _ CCTV Camera_ Video _ Sample Video Footage 720p.mp4",
+  "transformers": "5.13.0",
+  "before": {
+   "generated_at": "2026-10-12T21:22:27+05:30",
+   "loader": "non-strict (before 28223c0)"
+  },
+  "after": {
+   "generated_at": "2026-10-14T20:31:49+05:30",
+   "loader": "strict with key renaming (28223c0)"
+  },
+  "conclusion": "Identical per-person results. On this machine transformers 5.13.0 builds the same ViT weight names as the Hub checkpoint (vit.layers.N.attention.q_proj), so the old non-strict load already loaded the fine-tuned encoder. The ImageNet-weights failure only occurs where an older transformers (4.x, vit.encoder.layer.N) is installed. Section IV-G stands."
+ },
+ "rows": [
+  {
+   "track": 1,
+   "before": {
+    "gender": "male",
+    "gender_conf": 0.911,
+    "gender_votes": {
+     "male": 12
+    },
+    "age": "Age31-45",
+    "age_conf": 0.431,
+    "dwell_sec": 14.96
+   },
+   "after": {
+    "gender": "male",
+    "gender_conf": 0.911,
+    "gender_votes": {
+     "male": 12
+    },
+    "age": "Age31-45",
+    "age_conf": 0.431,
+    "dwell_sec": 14.96
+   },
+   "identical": true
+  },
+  {
+   "track": 2,
+   "before": {
+    "gender": "male",
+    "gender_conf": 0.56,
+    "gender_votes": {
+     "male": 7,
+     "female": 5
+    },
+    "age": "Age31-45",
+    "age_conf": 0.341,
+    "dwell_sec": 14.96
+   },
+   "after": {
+    "gender": "male",
+    "gender_conf": 0.56,
+    "gender_votes": {
+     "male": 7,
+     "female": 5
+    },
+    "age": "Age31-45",
+    "age_conf": 0.341,
+    "dwell_sec": 14.96
+   },
+   "identical": true
+  },
+  {
+   "track": 4,
+   "before": {
+    "gender": "male",
+    "gender_conf": 0.965,
+    "gender_votes": {
+     "male": 12
+    },
+    "age": "Age16-30",
+    "age_conf": 0.391,
+    "dwell_sec": 14.72
+   },
+   "after": {
+    "gender": "male",
+    "gender_conf": 0.965,
+    "gender_votes": {
+     "male": 12
+    },
+    "age": "Age16-30",
+    "age_conf": 0.391,
+    "dwell_sec": 14.72
+   },
+   "identical": true
+  },
+  {
+   "track": 5,
+   "before": {
+    "gender": "male",
+    "gender_conf": 0.946,
+    "gender_votes": {
+     "male": 8
+    },
+    "age": "Age31-45",
+    "age_conf": 0.424,
+    "dwell_sec": 11.6
+   },
+   "after": {
+    "gender": "male",
+    "gender_conf": 0.946,
+    "gender_votes": {
+     "male": 8
+    },
+    "age": "Age31-45",
+    "age_conf": 0.424,
+    "dwell_sec": 11.6
+   },
+   "identical": true
+  }
+ ]
+}

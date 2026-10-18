@@ -76,6 +76,17 @@ class FourierStyle:
         return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
 
 
+def target_frames(folder, max_frames=500):
+    """Paths of the unlabelled target frames in `folder` (e.g. the output of
+    scripts/research/fda_frames.py), at most `max_frames`, spread evenly over
+    the sorted list so every clip contributes, not only the first few by name."""
+    from pathlib import Path
+    paths = sorted(p for p in Path(folder).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png"))
+    if len(paths) > max_frames:
+        paths = [paths[i] for i in np.linspace(0, len(paths) - 1, max_frames).round().astype(int)]
+    return paths
+
+
 def build_transforms(image_size=224, augment=True,
                      model_name="google/vit-base-patch16-224",
                      condition="baseline", fda_targets=None, fda_beta=0.01, degrade_p=0.5):
