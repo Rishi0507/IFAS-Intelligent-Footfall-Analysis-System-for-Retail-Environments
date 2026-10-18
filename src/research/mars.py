@@ -6,7 +6,7 @@ frames the pooling study needs. Attribute labels per tracklet come from
 github.com/yuange250/MARS-Attribute (`mars_attributes.csv`), which uses the
 Market-1501 attribute definitions.
 
-Image files are named `<pid:4><C><cam><T><tracklet:4><F><frame:3>.jpg`, e.g.
+Image files are named `<pid:4><C><cam><T><tracklet:4><F><frame:3 or 4>.jpg`, e.g.
 `0001C1T0001F001.jpg`, under `bbox_train/<pid>/` and `bbox_test/<pid>/`.
 Person ids 0000 and -1 are junk and distractors and carry no labels.
 
@@ -34,7 +34,8 @@ AGE_NAMES = ["young", "teenager", "adult", "old"]
 # old / not-old split is reliable enough to report.
 AGE_TO_PETA = {"young": None, "teenager": "Age16-30", "adult": "Age31-60", "old": "AgeAbove61"}
 
-_NAME = re.compile(r"^(\d{4})C(\d)T(\d{4})F(\d{3})\.jpg$", re.IGNORECASE)
+# The MARS project page shows a 4-digit frame number in one example; accept both.
+_NAME = re.compile(r"^(\d{4})C(\d)T(\d{4})F(\d{3,4})\.jpg$", re.IGNORECASE)
 
 
 def parse_name(name):

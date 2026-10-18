@@ -14,6 +14,7 @@ CSV_HEADER = ("person-id,camera,tracklet,Tops.c,Bottoms.c,Age,Tops.l,Bottoms.l,"
 
 def test_parse_name():
     assert parse_name("0001C1T0058F003.jpg") == (1, 1, 58, 3)
+    assert parse_name("0065C1T0002F0016.jpg") == (65, 1, 2, 16)   # 4-digit frame
     assert parse_name("00-1C1T0001F001.jpg") is None       # distractor id
     assert parse_name("readme.txt") is None
 
