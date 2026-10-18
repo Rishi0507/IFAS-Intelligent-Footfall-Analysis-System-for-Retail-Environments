@@ -1,0 +1,1546 @@
+{
+ "meta": {
+  "commit": "7e4faa5",
+  "date": "2026-10-18",
+  "video": "vidssave.com HD CCTV Camera video 3MP 4MP iProx CCTV HDCCTVCameras.net retail store 720p.mp4",
+  "models": [
+   "abhshkp/footfall-analysis-vit-stage1",
+   "abhshkp/footfall-analysis-vit-stage2"
+  ],
+  "seeds": null,
+  "low_conf_below": 0.7
+ },
+ "rows": [
+  {
+   "run": "stage1, encoder skipped",
+   "gender_model": "abhshkp/footfall-analysis-vit-stage1",
+   "people": 46,
+   "female": 18,
+   "male": 28,
+   "low_conf": 22,
+   "mean_conf": 0.719
+  },
+  {
+   "run": "stage2, encoder skipped",
+   "gender_model": "abhshkp/footfall-analysis-vit-stage2",
+   "people": 46,
+   "female": 21,
+   "male": 25,
+   "low_conf": 21,
+   "mean_conf": 0.725
+  },
+  {
+   "run": "stage1, fixed loader",
+   "gender_model": "abhshkp/footfall-analysis-vit-stage1",
+   "people": 46,
+   "female": 33,
+   "male": 13,
+   "low_conf": 6,
+   "mean_conf": 0.88
+  },
+  {
+   "run": "stage2, fixed loader",
+   "gender_model": "abhshkp/footfall-analysis-vit-stage2",
+   "people": 46,
+   "female": 33,
+   "male": 13,
+   "low_conf": 8,
+   "mean_conf": 0.88
+  }
+ ],
+ "changed_labels": {
+  "stage1, encoder skipped -> stage2, encoder skipped": 3,
+  "stage1, encoder skipped -> stage1, fixed loader": 15,
+  "stage1, encoder skipped -> stage2, fixed loader": 15,
+  "stage2, encoder skipped -> stage1, fixed loader": 12,
+  "stage2, encoder skipped -> stage2, fixed loader": 12,
+  "stage1, fixed loader -> stage2, fixed loader": 2
+ },
+ "people": {
+  "1": {
+   "stage1, encoder skipped": [
+    "female",
+    0.655,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.717,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.999,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.999,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "2": {
+   "stage1, encoder skipped": [
+    "male",
+    0.655,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.714,
+    {
+     "female": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.997,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.999,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "3": {
+   "stage1, encoder skipped": [
+    "male",
+    0.915,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.917,
+    {
+     "male": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    1.0,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    1.0,
+    {
+     "male": 12
+    }
+   ]
+  },
+  "4": {
+   "stage1, encoder skipped": [
+    "male",
+    0.676,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.679,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.931,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.854,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ]
+  },
+  "5": {
+   "stage1, encoder skipped": [
+    "male",
+    0.788,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.759,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.789,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.795,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ]
+  },
+  "6": {
+   "stage1, encoder skipped": [
+    "male",
+    0.704,
+    {
+     "male": 9,
+     "female": 3
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.539,
+    {
+     "male": 9,
+     "female": 3
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.999,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.997,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "7": {
+   "stage1, encoder skipped": [
+    "male",
+    0.69,
+    {
+     "male": 8,
+     "female": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.681,
+    {
+     "male": 8,
+     "female": 4
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.671,
+    {
+     "male": 8,
+     "female": 4
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.676,
+    {
+     "male": 8,
+     "female": 4
+    }
+   ]
+  },
+  "8": {
+   "stage1, encoder skipped": [
+    "male",
+    0.85,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.846,
+    {
+     "male": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.999,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.999,
+    {
+     "male": 12
+    }
+   ]
+  },
+  "9": {
+   "stage1, encoder skipped": [
+    "female",
+    0.796,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.852,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.996,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.994,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "10": {
+   "stage1, encoder skipped": [
+    "male",
+    0.747,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.646,
+    {
+     "male": 7,
+     "female": 5
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.511,
+    {
+     "male": 5,
+     "female": 7
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.524,
+    {
+     "male": 6,
+     "female": 6
+    }
+   ]
+  },
+  "11": {
+   "stage1, encoder skipped": [
+    "female",
+    0.643,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.783,
+    {
+     "female": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.98,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.958,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "12": {
+   "stage1, encoder skipped": [
+    "male",
+    0.676,
+    {
+     "male": 9,
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.595,
+    {
+     "male": 9,
+     "female": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.947,
+    {
+     "female": 11
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.947,
+    {
+     "female": 11
+    }
+   ]
+  },
+  "13": {
+   "stage1, encoder skipped": [
+    "male",
+    0.757,
+    {
+     "male": 9,
+     "female": 3
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.625,
+    {
+     "female": 6,
+     "male": 6
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.761,
+    {
+     "female": 9,
+     "male": 3
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.597,
+    {
+     "female": 7,
+     "male": 5
+    }
+   ]
+  },
+  "14": {
+   "stage1, encoder skipped": [
+    "male",
+    0.661,
+    {
+     "female": 5,
+     "male": 7
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.556,
+    {
+     "female": 4,
+     "male": 8
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.894,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.9,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ]
+  },
+  "16": {
+   "stage1, encoder skipped": [
+    "female",
+    0.831,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.901,
+    {
+     "female": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.932,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.933,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ]
+  },
+  "17": {
+   "stage1, encoder skipped": [
+    "male",
+    0.722,
+    {
+     "female": 3,
+     "male": 9
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.669,
+    {
+     "female": 4,
+     "male": 8
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.785,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.742,
+    {
+     "female": 9,
+     "male": 3
+    }
+   ]
+  },
+  "19": {
+   "stage1, encoder skipped": [
+    "female",
+    0.835,
+    {
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.756,
+    {
+     "female": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.968,
+    {
+     "female": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.869,
+    {
+     "female": 2
+    }
+   ]
+  },
+  "22": {
+   "stage1, encoder skipped": [
+    "male",
+    0.812,
+    {
+     "male": 10,
+     "female": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.936,
+    {
+     "male": 11
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.999,
+    {
+     "male": 11
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    1.0,
+    {
+     "male": 11
+    }
+   ]
+  },
+  "24": {
+   "stage1, encoder skipped": [
+    "male",
+    0.688,
+    {
+     "female": 4,
+     "male": 8
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.694,
+    {
+     "female": 3,
+     "male": 9
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.684,
+    {
+     "female": 8,
+     "male": 4
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.649,
+    {
+     "female": 8,
+     "male": 4
+    }
+   ]
+  },
+  "26": {
+   "stage1, encoder skipped": [
+    "female",
+    0.649,
+    {
+     "male": 4,
+     "female": 8
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.698,
+    {
+     "female": 9,
+     "male": 3
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.968,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.977,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "27": {
+   "stage1, encoder skipped": [
+    "male",
+    0.58,
+    {
+     "male": 7,
+     "female": 5
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.551,
+    {
+     "male": 6,
+     "female": 6
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.748,
+    {
+     "male": 3,
+     "female": 9
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.744,
+    {
+     "male": 3,
+     "female": 9
+    }
+   ]
+  },
+  "29": {
+   "stage1, encoder skipped": [
+    "female",
+    0.897,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.889,
+    {
+     "female": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    1.0,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    1.0,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "35": {
+   "stage1, encoder skipped": [
+    "female",
+    0.61,
+    {
+     "female": 8,
+     "male": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.736,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.984,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.997,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "36": {
+   "stage1, encoder skipped": [
+    "male",
+    0.732,
+    {
+     "male": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.707,
+    {
+     "male": 4
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.758,
+    {
+     "male": 3,
+     "female": 1
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.931,
+    {
+     "male": 4
+    }
+   ]
+  },
+  "39": {
+   "stage1, encoder skipped": [
+    "female",
+    0.56,
+    {
+     "female": 6,
+     "male": 6
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.536,
+    {
+     "female": 6,
+     "male": 6
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.906,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.87,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ]
+  },
+  "40": {
+   "stage1, encoder skipped": [
+    "male",
+    0.936,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.912,
+    {
+     "male": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    1.0,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.999,
+    {
+     "male": 12
+    }
+   ]
+  },
+  "42": {
+   "stage1, encoder skipped": [
+    "male",
+    0.631,
+    {
+     "male": 9,
+     "female": 3
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.535,
+    {
+     "male": 6,
+     "female": 6
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.772,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.829,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ]
+  },
+  "43": {
+   "stage1, encoder skipped": [
+    "female",
+    0.747,
+    {
+     "male": 2,
+     "female": 10
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.825,
+    {
+     "male": 1,
+     "female": 11
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.909,
+    {
+     "male": 1,
+     "female": 11
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.984,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "44": {
+   "stage1, encoder skipped": [
+    "female",
+    0.674,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.875,
+    {
+     "female": 12
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.991,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.996,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "46": {
+   "stage1, encoder skipped": [
+    "female",
+    0.58,
+    {
+     "female": 8,
+     "male": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.767,
+    {
+     "female": 11,
+     "male": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.996,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.999,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "47": {
+   "stage1, encoder skipped": [
+    "male",
+    0.537,
+    {
+     "male": 8,
+     "female": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.585,
+    {
+     "male": 8,
+     "female": 4
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.981,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.986,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "51": {
+   "stage1, encoder skipped": [
+    "female",
+    0.577,
+    {
+     "male": 4,
+     "female": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.633,
+    {
+     "male": 4,
+     "female": 4
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.999,
+    {
+     "female": 8
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.998,
+    {
+     "female": 8
+    }
+   ]
+  },
+  "56": {
+   "stage1, encoder skipped": [
+    "female",
+    0.683,
+    {
+     "male": 1,
+     "female": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.77,
+    {
+     "female": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.997,
+    {
+     "female": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.995,
+    {
+     "female": 2
+    }
+   ]
+  },
+  "57": {
+   "stage1, encoder skipped": [
+    "female",
+    0.604,
+    {
+     "female": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.824,
+    {
+     "female": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.881,
+    {
+     "female": 1
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.923,
+    {
+     "female": 1
+    }
+   ]
+  },
+  "59": {
+   "stage1, encoder skipped": [
+    "male",
+    0.494,
+    {
+     "female": 2,
+     "male": 3
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.582,
+    {
+     "female": 4,
+     "male": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.946,
+    {
+     "female": 5
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.967,
+    {
+     "female": 5
+    }
+   ]
+  },
+  "63": {
+   "stage1, encoder skipped": [
+    "male",
+    0.81,
+    {
+     "male": 9,
+     "female": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.668,
+    {
+     "male": 8,
+     "female": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.727,
+    {
+     "male": 8,
+     "female": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.684,
+    {
+     "male": 3,
+     "female": 7
+    }
+   ]
+  },
+  "64": {
+   "stage1, encoder skipped": [
+    "male",
+    0.832,
+    {
+     "female": 1,
+     "male": 11
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.774,
+    {
+     "female": 2,
+     "male": 10
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.503,
+    {
+     "female": 6,
+     "male": 6
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.613,
+    {
+     "female": 4,
+     "male": 8
+    }
+   ]
+  },
+  "65": {
+   "stage1, encoder skipped": [
+    "female",
+    0.528,
+    {
+     "female": 8,
+     "male": 4
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.666,
+    {
+     "female": 10,
+     "male": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.971,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.992,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "66": {
+   "stage1, encoder skipped": [
+    "male",
+    0.893,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.791,
+    {
+     "male": 11,
+     "female": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.761,
+    {
+     "female": 3,
+     "male": 9
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.809,
+    {
+     "male": 10,
+     "female": 2
+    }
+   ]
+  },
+  "68": {
+   "stage1, encoder skipped": [
+    "male",
+    0.95,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.691,
+    {
+     "male": 11,
+     "female": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.955,
+    {
+     "female": 1,
+     "male": 11
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.762,
+    {
+     "female": 2,
+     "male": 10
+    }
+   ]
+  },
+  "72": {
+   "stage1, encoder skipped": [
+    "female",
+    0.752,
+    {
+     "male": 2,
+     "female": 10
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.806,
+    {
+     "male": 3,
+     "female": 9
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.983,
+    {
+     "female": 12
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.969,
+    {
+     "female": 12
+    }
+   ]
+  },
+  "74": {
+   "stage1, encoder skipped": [
+    "male",
+    0.709,
+    {
+     "male": 10,
+     "female": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.621,
+    {
+     "male": 8,
+     "female": 3
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.594,
+    {
+     "male": 7,
+     "female": 4
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.598,
+    {
+     "female": 5,
+     "male": 6
+    }
+   ]
+  },
+  "77": {
+   "stage1, encoder skipped": [
+    "female",
+    0.617,
+    {
+     "female": 5,
+     "male": 1
+    }
+   ],
+   "stage2, encoder skipped": [
+    "female",
+    0.71,
+    {
+     "female": 5,
+     "male": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    1.0,
+    {
+     "female": 6
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    1.0,
+    {
+     "female": 6
+    }
+   ]
+  },
+  "79": {
+   "stage1, encoder skipped": [
+    "male",
+    0.938,
+    {
+     "male": 12
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.863,
+    {
+     "male": 11,
+     "female": 1
+    }
+   ],
+   "stage1, fixed loader": [
+    "male",
+    0.727,
+    {
+     "male": 9,
+     "female": 3
+    }
+   ],
+   "stage2, fixed loader": [
+    "male",
+    0.749,
+    {
+     "male": 11,
+     "female": 1
+    }
+   ]
+  },
+  "83": {
+   "stage1, encoder skipped": [
+    "male",
+    0.767,
+    {
+     "male": 6,
+     "female": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.69,
+    {
+     "male": 5,
+     "female": 3
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.579,
+    {
+     "male": 3,
+     "female": 5
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.678,
+    {
+     "male": 2,
+     "female": 6
+    }
+   ]
+  },
+  "87": {
+   "stage1, encoder skipped": [
+    "male",
+    0.702,
+    {
+     "male": 2
+    }
+   ],
+   "stage2, encoder skipped": [
+    "male",
+    0.763,
+    {
+     "male": 2
+    }
+   ],
+   "stage1, fixed loader": [
+    "female",
+    0.998,
+    {
+     "female": 2
+    }
+   ],
+   "stage2, fixed loader": [
+    "female",
+    0.998,
+    {
+     "female": 2
+    }
+   ]
+  }
+ }
+}

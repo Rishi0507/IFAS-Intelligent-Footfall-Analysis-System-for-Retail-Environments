@@ -100,3 +100,12 @@ Each of these needs a decision from the authors.
 11. **Length.** The paper is ten pages. Many conferences cap at six or eight.
     The field check, the runtime section and the algorithm are the easiest
     parts to shorten or move to an appendix.
+12. **Field-check gender sentence.** The last paragraph of Section IV-G ("Gender
+    was stable for the three people who are clearly visible ... confidence of
+    0.56") came from the pipeline before the gender loader fix. That loader
+    skipped all twelve fine-tuned encoder layers, so the network ran on ImageNet
+    weights. Re-run the clip with the current code and replace the sentence.
+    The clip is not in the repository. On the 97 s retail clip the fix moved
+    15 of 46 people to a different label and the share below 0.7 confidence
+    from 22 to 6 (`results/b1_gender_rebaseline.json`). The detection and
+    tracking numbers in Section IV-G do not depend on the gender model.
