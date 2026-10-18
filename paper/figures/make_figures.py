@@ -13,6 +13,9 @@ Sources
               error of the image (about 0.0003 on the accuracy axes).
     notebook  printed in the stored outputs of age_classifier_v3.ipynb
     runtime   measured by scripts/benchmark_stages.py and saved in runtime.json
+    experiment  paper/results/rq1_gap.json, rq2_adaptation.json and rq3_pooling.json,
+              written by scripts/research/ (docs/research-plan.md). Each of these
+              figures is drawn only once its results file exists.
 """
 import json
 import math
@@ -24,6 +27,7 @@ import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
 OUT = Path(__file__).resolve().parent
+RESULTS = OUT.parent / "results"
 
 # ----------------------------------------------------------------------- data
 AGES = ["16 to 30", "31 to 45", "46 to 60", "Above 60"]
@@ -342,6 +346,192 @@ def runtime():
     plt.close(fig)
 
 
+# ------------------------------------------------------- experiment figures
+def _results(name, results):
+    path = Path(results) / name
+    if not path.exists():
+        print(f"{name} missing: run the research scripts first, skipping its figure")
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _ci(ax, x, ci, colour, label=None, marker="o"):
+    """A dot with its 95% interval as a vertical bar."""
+    v, lo, hi = ci["value"], ci["lo"], ci["hi"]
+    ax.errorbar([x], [v], yerr=[[v - lo], [hi - v]], fmt=marker, ms=4.6, color=colour,
+                mfc=colour, mec=colour, elinewidth=0.9, capsize=2, label=label, zorder=3)
+
+
+def rq1(results=RESULTS, out=OUT):
+    doc = _results("rq1_gap.json", results)
+    if not doc:
+        return
+    rows = [r for r in doc["rows"] if "spectrum" not in r]
+    spectra = [r for r in doc["rows"] if "spectrum" in r]
+    fig = plt.figure(figsize=(7.16, 2.4))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.5, 0.9, 1.0], wspace=0.36,
+                          left=0.07, right=0.99, top=0.86, bottom=0.27)
+
+    # (a) PETA under each degradation, worst level per family plus clean.
+    ax = fig.add_subplot(gs[0])
+    deg = [r for r in rows if r["domain"] == "peta-degraded" and "accuracy" in r]
+    names = ["clean"] + sorted({r["condition"] for r in deg if r["condition"] != "clean"})
+    for task, colour, off in (("gender", PICK, -0.12), ("age", WARM, 0.12)):
+        for i, cond in enumerate(names):
+            hit = [r for r in deg if r["task"] == task and r["condition"] == cond]
+            if hit:
+                _ci(ax, i + off, hit[0]["balanced_accuracy"], colour, task if i == 0 else None)
+    ax.set_xticks(range(len(names)), [n.replace("_", " ").replace("@", " ") for n in names],
+                  rotation=90, fontsize=5.6)
+    ax.set_ylabel("Balanced accuracy")
+    ax.legend(loc="lower left", frameon=False, ncol=2)
+    tag(ax, "a", "PETA under controlled degradation")
+
+    # (b) clean accuracy per domain.
+    ax = fig.add_subplot(gs[1])
+    domains = [d for d in ("peta", "mars", "retail") if any(r["domain"] == d for r in rows)]
+    for task, colour, off in (("gender", PICK, -0.12), ("age", WARM, 0.12)):
+        for i, d in enumerate(domains):
+            hit = [r for r in rows if r["domain"] == d and r["task"] == task
+                   and r["condition"] == "clean" and "accuracy" in r]
+            if hit:
+                _ci(ax, i + off, hit[0]["balanced_accuracy"], colour)
+    ax.set_xticks(range(len(domains)), [d.upper() if d != "retail" else "Retail" for d in domains])
+    ax.margins(x=0.25)
+    ax.set_ylabel("Balanced accuracy")
+    tag(ax, "b", "Domain gap")
+
+    # (c) radial power spectrum of each domain's clean crops.
+    ax = fig.add_subplot(gs[2])
+    colours = {"peta": PICK, "mars": GREY, "retail": WARM}
+    for r in spectra:
+        if r["condition"] != "clean":
+            continue
+        s = r["spectrum"]
+        d = r["domain"] if r["domain"] != "peta-degraded" else "peta"
+        ax.plot(s["freqs"], s["log_power"], color=colours.get(d, INK), lw=1.2,
+                label=d.upper() if d != "retail" else "Retail")
+    ax.set_xlabel("Spatial frequency (cycles/pixel)")
+    ax.set_ylabel("log$_{10}$ power")
+    ax.legend(loc="upper right", frameon=False)
+    tag(ax, "c", "Detail in the crops")
+    fig.savefig(out / "rq1_gap.pdf")
+    plt.close(fig)
+
+
+def rq2(results=RESULTS, out=OUT):
+    doc = _results("rq2_adaptation.json", results)
+    if not doc:
+        return
+    rows = doc["rows"]
+    metrics = [("peta_test_accuracy", "PETA test", PICK), ("retail_person_accuracy", "Retail, per person", WARM)]
+    fig, ax = plt.subplots(figsize=(3.45, 2.0))
+    fig.subplots_adjust(left=0.16, right=0.98, top=0.9, bottom=0.3)
+    x = np.arange(len(rows))
+    for k, (m, label, colour) in enumerate(metrics):
+        off = (k - 0.5) * 0.24
+        for i, r in enumerate(rows):
+            if m not in r:
+                continue
+            ax.errorbar([i + off], [r[m]["mean"]], yerr=[[r[m]["sd"] or 0]], fmt="o", ms=4.6,
+                        color=colour, elinewidth=0.9, capsize=2, label=label if i == 0 else None)
+            ax.plot([i + off] * len(r[m]["values"]), r[m]["values"], ".", ms=2.5, color=colour, alpha=0.5)
+    ax.set_xticks(x, [r["condition"] for r in rows], rotation=20, fontsize=6.6)
+    ax.set_ylabel("Gender accuracy")
+    ax.legend(loc="lower right", frameon=False, fontsize=6.6)
+    fig.savefig(out / "rq2_adaptation.pdf")
+    plt.close(fig)
+
+
+def rq3(results=RESULTS, out=OUT):
+    doc = _results("rq3_pooling.json", results)
+    if not doc:
+        return
+    rows = doc["rows"]
+    fig = plt.figure(figsize=(7.16, 2.2))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.3], wspace=0.3, left=0.07, right=0.99, top=0.86, bottom=0.2)
+    ax = fig.add_subplot(gs[0])
+    colours = {"gender": PICK, "age": WARM}
+    names = list(dict.fromkeys(s["strategy"] for r in rows for s in r["strategies"]))
+    for r in rows:
+        off = -0.12 if r["task"] == "gender" else 0.12
+        for s in r["strategies"]:
+            i = names.index(s["strategy"])
+            _ci(ax, i + off, s["accuracy"], colours[r["task"]], r["task"] if i == 0 else None)
+    ax.set_xticks(range(len(names)), names, fontsize=6.6)
+    ax.set_ylabel("Per-person accuracy")
+    ax.legend(loc="lower right", frameon=False)
+    tag(ax, "a", "Pooling strategy")
+
+    ax = fig.add_subplot(gs[1])
+    styles = {"majority": "-", "mean": "--", "confidence": ":", "quality": "-.",
+              "attention": (0, (1, 1.2))}
+    for r in rows:
+        ks = [b["k"] for b in r["by_k"]]
+        for s, ls in styles.items():
+            ys = [b.get(s) for b in r["by_k"]]
+            if any(y is not None for y in ys):
+                ax.plot(ks, ys, ls, color=colours[r["task"]], lw=1.1, label=f"{r['task']}, {s}")
+    ax.set_xlabel("Frames pooled per person (k)")
+    ax.set_ylabel("Per-person accuracy")
+    ax.legend(loc="lower right", frameon=False, ncol=2, fontsize=6)
+    tag(ax, "b", "Accuracy against frames pooled")
+    fig.savefig(out / "rq3_pooling.pdf")
+    plt.close(fig)
+
+
+def rq3_numbers(results=RESULTS, out=OUT):
+    r"""paper/figures/rq3_numbers.tex: every RQ3 number the text quotes, as
+    \rqthree{task}{key}. Missing numbers print as ?? in the PDF, so the text can
+    be written before the data exists and nothing in it is typed by hand."""
+    doc = _results("rq3_pooling.json", results)
+    lines = ["% Written by make_figures.py from results/rq3_pooling.json. Do not edit."]
+    if doc:
+        def put(task, key, val):
+            lines.append(f"\\expandafter\\def\\csname rq3/{task}/{key}\\endcsname{{{val}}}")
+
+        def ci(c):
+            if c is None or c.get("value") is None or c["value"] != c["value"]:
+                return None
+            return f"{c['value']:.2f} [{c['lo']:.2f}, {c['hi']:.2f}]"
+
+        def pval(p):
+            return "$<0.001$" if p < 0.001 else f"{p:.3f}"
+
+        for r in doc["rows"]:
+            t = r["task"]
+            put(t, "n", r["n_people"])
+            put(t, "crops", r["n_crops"])
+            for st in r["strategies"]:
+                name = st["strategy"]
+                if ci(st["accuracy"]):
+                    put(t, name, ci(st["accuracy"]))
+                    put(t, f"{name}-value", f"{st['accuracy']['value']:.2f}")
+                mc = st.get("mcnemar_vs_majority")
+                if mc:
+                    put(t, f"p-{name}", pval(mc["p"]))
+                    put(t, f"b-{name}", mc["b"])
+                    put(t, f"c-{name}", mc["c"])
+            for sub, vals in r.get("subsets", {}).items():
+                put(t, f"{sub}-n", vals["n_people"])
+                for name in ("majority", "quality", "attention"):
+                    if vals.get(name) is not None:
+                        put(t, f"{sub}-{name}", f"{vals[name]:.2f}")
+            for name, coef in (r.get("quality_model_coef") or {}).items():
+                put(t, f"coef-{name}", f"{round(coef, 2) + 0.0:+.2f}")     # + 0.0: no "-0.00"
+            att = r.get("attention", {})
+            rho = (att.get("vs_quality") or {}).get("mean_spearman")
+            if rho is not None:
+                put(t, "rho", f"{rho:.2f}")
+            if att.get("fitted_on"):
+                put(t, "attention-fitted", "cross-validation over people"
+                    if "cross-validation" in att["fitted_on"] else "the MARS training tracklets")
+            put(t, "fitted", "cross-validation over people" if "cross-validation"
+                in r["quality_model_fitted_on"] else "MARS")
+        lines.append(f"\\def\\rqthreeCommit{{{doc['meta'].get('commit', '')}}}")
+    (out / "rq3_numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 if __name__ == "__main__":
     gender()
     age_sensitivity()
@@ -349,4 +539,8 @@ if __name__ == "__main__":
     age_data()
     age_test()
     runtime()
+    rq1()
+    rq2()
+    rq3()
+    rq3_numbers()
     print("wrote", ", ".join(p.name for p in sorted(OUT.glob("*.pdf"))))

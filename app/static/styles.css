@@ -294,6 +294,13 @@ button.link:hover { background: none; text-decoration-color: currentColor; }
 }
 .tab-glider.instant { transition: none; }
 .bar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.bar-link {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--hairline); background: var(--surface-2); color: var(--text-1);
+  text-decoration: none; font-weight: 500; font-size: 13px;
+}
+.bar-link:hover { background: var(--surface-3); }
+@media (max-width: 720px) { .bar-link span { display: none; } }
 
 @media (max-width: 1240px) {
   .tabs button { padding: 7px 11px; }

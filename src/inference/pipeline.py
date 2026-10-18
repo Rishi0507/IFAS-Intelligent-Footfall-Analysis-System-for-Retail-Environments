@@ -42,7 +42,8 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
                   captured_at=None, site=None, camera=None,
                   track_conf=0.25, rejoin_sec=8.0, weak_conf=0.10, max_checks=4,
                   verifier_weights="yolov8m.pt", verify_sizes=(640, 960), verify_conf=0.25,
-                  detector=None, gender_model=None, age_model=None, verifier=None):
+                  detector=None, gender_model=None, age_model=None, verifier=None,
+                  export_crops=False, pooling="majority", quality_model=None):
     """Run the pipeline over one video.
 
     `detector`, `gender_model` and `age_model` accept already-constructed
@@ -61,6 +62,16 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
       hunches and never run on every frame. Pass `verifier_weights=None` to
       do without it, or set `weak_conf` equal to `track_conf` to turn hunches
       off altogether.
+
+    `export_crops` saves every crop that is classified to `crops/<track>/` and
+    writes `crops.jsonl` (one line per crop, with its quality cues) next to
+    analytics.json, for labelling and the pooling study (docs/research-plan.md).
+    It uses the same vote sampling as classification, so it saves exactly the
+    crops the product classified.
+
+    `pooling` picks how a person's votes become one label: "majority" (the
+    default), "mean", "confidence" or "quality". "quality" needs `quality_model`,
+    a fitted src.research.pooling.QualityModel or the path of its JSON file.
     """
     import cv2
     from PIL import Image
@@ -123,11 +134,23 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
 
     low_conf = min(det_conf, track_conf)
     floor_conf = min(low_conf, weak_conf)
+    quality_model_src = None
+    if isinstance(quality_model, (str, Path)):
+        from ..research.pooling import QualityModel
+        quality_model_src = str(quality_model)
+        quality_model = QualityModel.load(quality_model)
     tracker = IoUTracker(iou_thresh=0.3, max_misses=int(fps),
                          rejoin_frames=int(round(rejoin_sec * fps)),
                          new_track_conf=det_conf, rejoin_conf=low_conf,
                          tentative_conf=floor_conf if floor_conf < low_conf else None,
-                         frame_size=(width, height))
+                         frame_size=(width, height), pooling=pooling,
+                         quality_model=quality_model)
+    # Quality cues are measured only when something will use them.
+    need_cues = export_crops or pooling == "quality"
+    if need_cues:
+        from ..research.quality import crop_cues, flow_stats, frame_flow, occlusion
+    crop_records = []
+    prev_gray = gray = None
     vote_gap = max(stride, int(round(vote_every_sec * fps)))
     check_gap = max(stride, int(round(fps)))          # ask about a hunch once a second at most
     n_checks = 0
@@ -144,6 +167,10 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         ok, frame = cap.read()
         if not ok or (max_frames and frame_idx >= max_frames):
             break
+        if need_cues:
+            # Before any box is drawn on the frame. The previous frame, sampled
+            # or not, is what motion is measured against.
+            prev_gray, gray = gray, cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         if frame_idx % stride == 0:
             res = detector(frame, classes=[0], conf=floor_conf, verbose=False)[0]
@@ -187,12 +214,39 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
             matched = [(agreed.get(id(t), t), b, c) for t, b, c in matched]
             matched = [m for m in matched if m[0].confirmed]
 
-            due = [(t, b) for t, b, _c in matched if t.needs_vote(frame_idx, vote_gap, max_votes)]
-            crops = [Image.fromarray(frame[b[1]:b[3], b[0]:b[2]][:, :, ::-1]) for _t, b in due]
+            due = [(t, b, c) for t, b, c in matched if t.needs_vote(frame_idx, vote_gap, max_votes)]
+            crops = [Image.fromarray(frame[b[1]:b[3], b[0]:b[2]][:, :, ::-1]) for _t, b, _c in due]
             g_out = gender_model.predict(crops) if (gender_model and crops) else [None] * len(crops)
             a_out = age_model.predict(crops) if (age_model and crops) else [None] * len(crops)
-            for (track, _b), gp, ap in zip(due, g_out, a_out):
-                track.vote(gender_probs=gp, age_probs=ap, frame_idx=frame_idx)
+            measured = [(None, None, None)] * len(due)
+            if need_cues and due:
+                mag = scale = None
+                if prev_gray is not None:
+                    mag, scale = frame_flow(prev_gray, gray)
+                people_boxes = [b for _t, b, _c in matched]
+                measured = []
+                for (_t, b, c), crop in zip(due, crops):
+                    others = [o for o in people_boxes if o != b]
+                    flow = flow_stats(mag, scale, b, others) if mag is not None else None
+                    overlap = occlusion(b, others)
+                    measured.append((crop_cues(crop, b, width, height, det_conf=c, flow=flow,
+                                               overlap=overlap), flow, overlap))
+            for (track, b, c), crop, gp, ap, (cues, flow, overlap) in zip(
+                    due, crops, g_out, a_out, measured):
+                track.vote(gender_probs=gp, age_probs=ap, frame_idx=frame_idx, cues=cues)
+                if export_crops:
+                    # PNG, not JPEG: research scripts re-read these crops, and the age
+                    # histograms shift by up to 0.06 in probability on recompressed pixels.
+                    rel = f"crops/{track.id}/{frame_idx:06d}.png"
+                    (out_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+                    crop.save(out_dir / rel)
+                    crop_records.append({
+                        "track": track.id, "frame": frame_idx, "t": round(frame_idx / fps, 3),
+                        "box": list(b), "det_conf": round(float(c), 4),
+                        "frame_w": width, "frame_h": height, "crop": rel,
+                        "flow": flow, "overlap": round(float(overlap), 4), "cues": cues,
+                        "pred": {"gender": _round_probs(gp), "age": _round_probs(ap)},
+                    })
             n_classified += len(crops)
 
             if writer is not None:
@@ -268,6 +322,8 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         "frame_stride": stride,
         "vote_every_sec": vote_every_sec,
         "max_votes_per_person": max_votes,
+        "pooling": pooling,
+        "quality_model": quality_model_src,
         "iou_thresh": 0.3,
         "gender_model": gender_repo or (str(gender_ckpt) if gender_ckpt else None),
         "age_model": str(age_bundle) if age_bundle else None,
@@ -294,10 +350,33 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
     doc["kpis"]["hunches_dropped"] = tracker.unconfirmed
     # Stored, not computed in the browser: any consumer of the file gets them.
     doc["insights"] = insights(doc)
+    if export_crops:
+        doc["meta"]["crops_exported"] = _write_crops(out_dir, crop_records,
+                                                     {t["id"] for t in doc["tracks"]})
     with open(out_dir / "analytics.json", "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
     say(stage="done", frame=frame_idx, total=n_frames, pct=100.0)
     return doc
+
+
+def _round_probs(probs):
+    return None if probs is None else {k: round(float(v), 5) for k, v in probs.items()}
+
+
+def _write_crops(out_dir, records, kept_ids):
+    """Write crops.jsonl for the people the analytics kept, and drop the rest.
+
+    A track seen in too few frames is dropped as noise after it may already
+    have been classified; its crops go too, so the file holds exactly the crops
+    behind the `classified_frames` of the people in analytics.json.
+    """
+    keep = [r for r in records if r["track"] in kept_ids]
+    for tid in {r["track"] for r in records} - set(kept_ids):
+        shutil.rmtree(out_dir / "crops" / str(tid), ignore_errors=True)
+    with open(out_dir / "crops.jsonl", "w", encoding="utf-8") as f:
+        for r in keep:
+            f.write(json.dumps(r) + "\n")
+    return len(keep)
 
 
 def _load_verifier(weights):
@@ -445,6 +524,13 @@ def main():
                         "(default: the video file's timestamp)")
     p.add_argument("--device", default="auto")
     p.add_argument("--no-video", action="store_true", help="analytics only, skip the MP4")
+    p.add_argument("--export-crops", action="store_true",
+                   help="save every classified crop and crops.jsonl, for labelling and research")
+    p.add_argument("--pooling", default="majority",
+                   choices=["majority", "mean", "confidence", "quality"],
+                   help="how a person's votes become one label")
+    p.add_argument("--quality-model", default=None,
+                   help="fitted quality model JSON, needed for --pooling quality")
     a = p.parse_args()
 
     try:
@@ -457,7 +543,8 @@ def main():
             max_votes=a.max_votes, captured_at=a.captured_at,
             track_conf=a.track_conf, rejoin_sec=a.rejoin_sec, weak_conf=a.weak_conf,
             verifier_weights=a.verifier,
-            site=a.site, camera=a.camera,
+            site=a.site, camera=a.camera, export_crops=a.export_crops,
+            pooling=a.pooling, quality_model=a.quality_model,
             progress=lambda **kw: print(f"  {kw.get('stage')}: {kw.get('pct')}%", end="\r"),
         )
     except ValueError as exc:

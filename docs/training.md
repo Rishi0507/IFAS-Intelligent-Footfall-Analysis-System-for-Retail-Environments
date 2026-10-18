@@ -32,6 +32,18 @@ This keeps the age model directly comparable to the published baseline, rather t
 - **Phase A** (3 epochs, linear probe): backbone frozen, head only @ LR 1e-3.
 - **Phase B** (10 epochs, full fine-tune): backbone unfrozen @ LR 1e-5 with cosine decay + 10% warmup.
 - Best checkpoint saved to `checkpoints/stage1/best/` and copied to Google Drive.
+- `transformers` is pinned to 5.6.2 in the notebooks and `requirements.txt`, the version both
+  gender checkpoints load under strictly. Versions rename the ViT weight keys, so keep the two in step.
+
+### Research conditions (RQ2)
+
+`build_transforms` in `src/training/transforms.py` switches the training transform: `baseline`,
+`degrade` (CCTV degradations), `fda` (Fourier Domain Adaptation onto unlabelled store frames) or
+`fda+degrade`.
+`target_frames(folder)` picks the FDA frames evenly from a folder such as the one
+`scripts/research/fda_frames.py` writes. The full study, every condition and seed with the
+held-out PETA test result, runs on Colab from `research_rq2_training.ipynb` through
+`src/research/rq2.py` (see its docstring and [research-plan.md](research-plan.md)).
 
 ## Stage 2 - Your data, lower LR
 

@@ -1,0 +1,58 @@
+% System, cut to about one column for the research rewrite (task S3, Person A).
+% Replaces Sections III-A to III-G of the system paper. The algorithm, the
+% second-detector details and the dashboard move to an appendix or are cut.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[start chain=going right, node distance=7mm]
+  \node[box, on chain] (video) {Video\\frames};
+  \node[box, on chain] (det) {Person detector\\YOLOv8n};
+  \node[box, on chain] (trk) {IoU\\tracker};
+  \node[deep, right=14mm of trk, yshift=8.5mm] (gen) {Gender classifier\\ViT-B/16 and linear head};
+  \node[classic, right=14mm of trk, yshift=-8.5mm] (age) {Age classifier\\histograms and four SVMs};
+  \node[box, right=62mm of trk] (vote) {Pool per\\person};
+  \node[box, right=7mm of vote] (rec) {One record\\per person};
+
+  \draw[flow] (video) -- (det);
+  \draw[flow] (det) -- node[note, above] {boxes} (trk);
+  \draw[flow] (trk.east) -- ++(6mm,0) |- (gen.west);
+  \draw[flow] (trk.east) -- ++(6mm,0) |- (age.west);
+  \node[note, above=0.4mm] at ($(trk.east)+(3mm,0)$) {crops};
+  \draw[flow] (gen.east) -- ++(4mm,0) |- ($(vote.west)+(0,1.6mm)$);
+  \draw[flow] (age.east) -- ++(4mm,0) |- ($(vote.west)+(0,-1.6mm)$);
+  \draw[flow] (vote) -- (rec);
+\end{tikzpicture}
+\caption{The IFAS pipeline. Each tracked person is classified on up to 12 frames
+by both models, and a pooling rule turns those frames into one label per person.
+RQ3 asks which pooling rule to use.}
+\label{fig:pipeline}
+\end{figure*}
+
+\section{System}
+\label{sec:system}
+IFAS turns a video into one record per person (Fig.~\ref{fig:pipeline}).
+YOLOv8n~\cite{jocher2023yolov8} finds the people in every second frame. A greedy
+tracker links boxes across frames by intersection over union (IoU) and keeps a
+lost track open for up to 8\,s, so a person the detector misses for a moment is
+not counted twice. The tracker has no appearance model.
+
+Two classifiers label the crops of each tracked person. Gender comes from a
+ViT-B/16~\cite{dosovitskiy2021vit} with a linear head, fine-tuned on
+PETA~\cite{deng2014peta}. Age comes from colour and LBP
+histograms~\cite{ojala2002lbp,swain1991color} scored by one SVM per age
+group~\cite{cortes1995svm}, whose margins a softmax turns into a distribution
+over the four PETA groups. RQ1 and RQ3 use the released models unchanged, and
+RQ2 retrains the gender model.
+
+A person is classified at most once every 0.4\,s and at most 12 times. Frame $i$
+of a person gives a probability vector $p_i$ over the classes $\mathcal{C}$ and a
+vector of quality cues $q_i$ (Section~\ref{sec:rq3}). A pooling rule maps the
+frames $\{(p_i, q_i)\}_{i=1}^{n}$ to one label. The product uses the majority
+vote
+\begin{equation}
+\hat{y} = \arg\max_{c \in \mathcal{C}} \sum_{i=1}^{n}
+  \mathbf{1}\!\left[\arg\max_{c'} p_i(c') = c\right],
+\label{eq:majority}
+\end{equation}
+with a tie going to the class with the larger $\sum_i p_i(c)$.
+Section~\ref{sec:rq3} compares it with four other rules and a learned baseline.

@@ -40,10 +40,10 @@ graph TD
 
 ## Documentation
 
-- **Architecture Diagrams**: For detailed flowcharts of the inference pipeline and internal model structure, see the [Architecture Overview](file:///e:/projects/Footfall-Analysis/docs/architecture/README.md).
-- **Fine-Tuning Guide**: For a detailed explanation of tuning stages, learning rates, and dataset configuration, see [training.md](file:///e:/projects/Footfall-Analysis/docs/training.md).
+- **Architecture Diagrams**: For detailed flowcharts of the inference pipeline and internal model structure, see the [Architecture Overview](docs/architecture/README.md).
+- **Fine-Tuning Guide**: For a detailed explanation of tuning stages, learning rates, and dataset configuration, see [training.md](docs/training.md).
 - **Dashboard & Inference Guide**: For the end-to-end pipeline (detection, tracking, the analytics schema) and the dashboard, see [dashboard.md](docs/dashboard.md).
-- **Age Model Guide**: For the classical computer vision pipeline used for age classification (feature extraction, per-attribute SVMs), see the Age Attribute Model section in [training.md](file:///e:/projects/Footfall-Analysis/docs/training.md) and the `age_classifier_v3.ipynb` notebook.
+- **Age Model Guide**: For the classical computer vision pipeline used for age classification (feature extraction, per-attribute SVMs), see the Age Attribute Model section in [training.md](docs/training.md) and the `age_classifier_v3.ipynb` notebook.
 
 ---
 
@@ -265,6 +265,15 @@ The dashboard has two levels of detail, toggled in the header: **Simple**
 
 The research paper is in [paper/](paper/README.md): the IEEE-format source, the
 script that draws its plots and the built PDF.
+
+## Research
+
+[docs/research-plan.md](docs/research-plan.md) turns the system into a research
+paper around three questions: how big the PETA-to-CCTV gap is, whether it can be
+closed without labelling store data, and how to pool a person's frames. The code
+is in `src/research/` and `scripts/research/`; Section 8 of the plan lists what
+is done and what still needs footage, labels or a GPU. Data sources, consent and
+the labelling protocol are in [docs/research-data.md](docs/research-data.md).
 
 Age classification is optional and needs a bundle exported from
 `age_classifier_v3.ipynb` first - see [docs/dashboard.md](docs/dashboard.md),

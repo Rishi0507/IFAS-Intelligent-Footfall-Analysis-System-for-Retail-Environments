@@ -65,21 +65,26 @@ Project guide: Prof. Neha Katre}
 \maketitle
 
 \begin{abstract}
-Retail stores record hours of camera footage every day and use almost none of it.
-This paper presents IFAS, a system that turns that footage into a count of visitors
-with their gender, their age group, the time they stay and the places they stand.
-IFAS gives each task the simplest model that does it well. A YOLOv8 detector finds
-people and an IoU tracker follows them across frames. A ViT-B/16 network classifies
-gender after transfer learning on the PETA dataset. Four support vector machines
-classify age from colour and texture histograms, following the original PETA
-benchmark. Each person is classified on several frames and the results are pooled
-into one label. In our study the gender model reaches 97.8\% validation accuracy on
-PETA. On the PETA test split the age model reaches a mean accuracy of 0.835 over
-four age groups and a four-way accuracy of 76.7\%. Four out of five of its errors
-land in a neighbouring age group. We report how sensitive both models are to their
-main settings and how long each stage takes on a laptop processor. A check on
-shop footage shows where detection and tracking fail and how far two additions,
-rejoining lost tracks and a second detector for weak detections, repair it.
+Most retail stores record many hours of CCTV footage every day, yet very little of
+it is ever analysed. We present IFAS, a system that processes this footage and
+reports how many people visited, their gender and approximate age group, how long
+they stayed and where in the frame they spent their time. Instead of one large
+model for everything, IFAS uses a separate model for each task. People are
+detected with YOLOv8 and followed across frames by a simple IoU-based tracker.
+Gender is predicted by a ViT-B/16 network fine-tuned on the PETA dataset, while age
+is predicted by four support vector machines trained on colour and texture
+histograms, in the manner of the original PETA baseline. Because each person
+appears in many frames, their predictions are pooled into a single label. On PETA
+the gender model reached up to 97.8\% validation accuracy in short training runs,
+and the age model obtained a mean accuracy of 0.835 over four age groups on a
+held-out test split (76.7\% four-way accuracy), with about four in five of its
+errors falling in an adjacent age group. Both splits are made at the image level,
+so the same person can appear on both sides, and these figures are likely to be
+optimistic. We also study how sensitive each model is to its main settings,
+measure the runtime of every stage on a laptop CPU, and run the full pipeline on a
+short shop recording to see where detection and tracking break down and how much
+two additions, rejoining lost tracks and a second detector for weak detections,
+are able to repair.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -90,106 +95,115 @@ learning, support vector machine, local binary patterns, retail analytics
 % ---------------------------------------------------------------------------
 \section{Introduction}
 
-A store that wants to know how many people came in today has two options. It can
-post someone at the door with a clicker or it can read the number off a sensor
-above the entrance. Neither says who came in, how long they stayed or where they
-stood. The cameras that already watch the shop floor record all of that, and
-almost none of it is used.
+A store that wants to know how many customers came in on a given day usually has
+two options: someone at the door with a hand counter, or an overhead sensor at the
+entrance. Neither tells the store who the visitors were, how long they stayed or
+which part of the floor they spent time in. The security cameras that are already
+installed capture all of this, but in practice the recordings are rarely looked at
+unless something goes wrong.
 
-Reading the footage by hand does not scale. One person can watch one screen, and
-a manual count drifts after a few minutes. A store with eight cameras and a
-twelve hour day produces close to a hundred hours of video a day. The work has to
-be automated before the footage is worth keeping.
+Going through the footage by hand is not realistic. A person can only watch one
+screen at a time, and manual counts start to drift after a few minutes. A modest
+store with eight cameras open for twelve hours generates close to a hundred hours
+of video every day, so the analysis has to be automated before the footage is of
+any real use.
 
-This paper describes IFAS, the Intelligent Footfall Analysis System. IFAS takes a
-recorded video and returns a record of every person who appears in it. The record
-holds the person's gender and age group, the time they entered and left the frame
-and the path they took. A dashboard reads these records and shows them as counts,
-charts and a short written summary.
+In this paper we describe IFAS, the Intelligent Footfall Analysis System. IFAS
+takes a recorded video as input and produces a record for every person who appears
+in it, containing their gender, their age group, the times at which they entered
+and left the frame, and the path they followed. A web dashboard reads these
+records and presents them as counts, charts and a short written summary.
 
-The design follows one rule: each task gets the simplest model that does it well.
-Gender is a binary label with plenty of training data, so a pretrained vision
-transformer~\cite{dosovitskiy2021vit} is a good fit. We fine-tune ViT-B/16 in two
-stages. The first uses the public PETA dataset~\cite{deng2014peta} and the second
-adapts the model to footage from the target store. Age is harder to read from a
-pedestrian crop, and PETA has few examples in some age groups. For age we follow
-the original PETA benchmark~\cite{deng2014peta} and train one support vector
-machine per age group on colour and texture histograms. This keeps the age results
-comparable with the published baseline. Detection needs speed more than depth, so
-a small YOLOv8 model~\cite{jocher2023yolov8} does that job.
+Our main design decision was to pick, for each sub-task, the simplest model that
+does the job well. Gender is a binary label with plenty of training data
+available, which makes a pretrained vision transformer~\cite{dosovitskiy2021vit} a
+natural choice. We fine-tune ViT-B/16 in two stages, first on the public PETA
+dataset~\cite{deng2014peta} and then on footage from the target store. Age is much
+harder to read from a low-resolution pedestrian crop, and PETA has comparatively
+few examples of older people. For age we therefore follow the recipe of the
+original PETA baseline~\cite{deng2014peta} and train one support vector machine
+per age group on colour and texture histograms. For detection, speed matters more
+than capacity, so a small YOLOv8 model~\cite{jocher2023yolov8} is used.
 
-The contributions of this work are as follows.
+The main contributions of this work are:
 \begin{itemize}
-  \item A pipeline that joins detection, tracking and two attribute classifiers
-        and pools several predictions per person into one label.
-  \item A sensitivity study of four training settings for the gender model and
-        five feature settings for the age model.
-  \item A full evaluation of the age model on the PETA test split, with an
-        analysis of where its errors fall.
-  \item Timings of every stage on a laptop processor, and the per-person cost
-        bound that follows from them.
-  \item A tracker that rejoins people the detector loses, and a second detector
-        that is consulted only about weak detections, with a field check that
-        shows what each one fixes.
+  \item an end-to-end pipeline that combines detection, tracking and two attribute
+        classifiers, and pools several predictions per person into one label;
+  \item a sensitivity study of four training settings of the gender model and
+        five feature settings of the age model;
+  \item an evaluation of the age model on a held-out PETA test split, including a
+        look at the kinds of errors it makes;
+  \item stage-by-stage timings on a laptop CPU and the per-person cost that
+        follows from them; and
+  \item tracker extensions that rejoin people the detector has lost and consult a
+        second detector only about weak detections, along with a field check on
+        shop footage showing what each change fixes.
 \end{itemize}
 
-Section~\ref{sec:related} reviews related work. Section~\ref{sec:system}
-describes the system. Section~\ref{sec:experiments} reports the experiments.
-Section~\ref{sec:discussion} discusses the results and their limits, and
-Section~\ref{sec:conclusion} concludes.
+The rest of the paper is organised as follows. Section~\ref{sec:related} reviews
+related work and Section~\ref{sec:system} describes the system.
+Section~\ref{sec:experiments} presents our experiments,
+Section~\ref{sec:discussion} discusses the results and their limitations, and
+Section~\ref{sec:conclusion} concludes the paper.
 
 % ---------------------------------------------------------------------------
 \section{Related Work}
 \label{sec:related}
 
 \subsection{Pedestrian Attribute Recognition}
-Deng et al.~\cite{deng2014peta} introduced the PEdesTrian Attribute (PETA)
-dataset. It joins ten smaller surveillance datasets into 19,000 images labelled
-with 61 binary attributes and four multi-class attributes. Gender and age group
-are among them. Their baseline describes each image with colour and texture
-features and trains one SVM per attribute. Each attribute is scored by mean
-accuracy, the average of the accuracy on positive examples and the accuracy on
-negative examples. A classifier that always predicts the majority class gains
-nothing under this measure. Later work on pedestrian attributes reports the same
-measure, and so do we.
+The PEdesTrian Attribute (PETA) dataset was introduced by Deng et
+al.~\cite{deng2014peta}. It brings together ten smaller surveillance datasets into
+19,000 images of 8,705 people, each annotated with 61 binary and four multi-class
+attributes, gender and age group among them. Their baseline describes each image
+with colour and texture features and trains a separate SVM for every attribute.
+Results are reported as mean accuracy (mA), the average of the accuracy on
+positive and on negative examples, so a classifier that always predicts the
+majority class gets no credit for it. Most later work on pedestrian attributes uses
+the same measure, and so do we. Jia et al.~\cite{jia2021rethinking} later showed
+that the usual PETA partition places images of the same person in both the training
+and the test set, which inflates reported results, and proposed identity-disjoint
+splits to address this.
 
 \subsection{Vision Transformers}
-The transformer~\cite{vaswani2017attention} was designed for text. Dosovitskiy et
-al.~\cite{dosovitskiy2021vit} applied it to images by cutting each image into
-patches of $16\times16$ pixels and treating the patches as a sequence. Their
-Vision Transformer (ViT) matches or beats convolutional networks when it is
-pretrained on a large dataset such as ImageNet-21k. ViT-B/16 has since become a
-common starting point for transfer learning. CLIP~\cite{radford2021clip} trains
-an image encoder together with a text encoder. A binary gender classifier has no
-use for the text side, so we use a vision-only backbone.
+The transformer~\cite{vaswani2017attention} was originally designed for language.
+Dosovitskiy et al.~\cite{dosovitskiy2021vit} applied it to images by cutting an
+image into $16\times16$ patches and treating them as a sequence of tokens. When
+pretrained on a large dataset such as ImageNet-21k, their Vision Transformer (ViT)
+matches or outperforms convolutional networks, and ViT-B/16 has since become a
+common starting point for transfer learning. CLIP~\cite{radford2021clip} learns an
+image encoder jointly with a text encoder. A gender classifier has no use for the
+text side, so we chose a vision-only backbone.
 
 \subsection{Colour and Texture Descriptors}
-Local binary patterns (LBP)~\cite{ojala2002lbp} describe texture by comparing
-each pixel with a ring of its neighbours. The uniform variant is invariant to
-rotation and to monotonic changes in brightness, and computing it at several
-radii captures texture at several scales. Colour histograms add the distribution
-of colour within a region~\cite{swain1991color}. Support vector
-machines~\cite{cortes1995svm} work well on fixed-length descriptors of this kind.
-For histograms the intersection kernel is a common choice, and it is the kernel
-used in the PETA baseline~\cite{deng2014peta}.
+Local binary patterns (LBP)~\cite{ojala2002lbp} describe texture by comparing each
+pixel with a ring of neighbouring pixels. The rotation-invariant uniform variant is
+unaffected by rotation and by monotonic changes in brightness, and computing it at
+several radii captures texture at more than one scale. Colour histograms complement
+this by describing how colours are distributed within a
+region~\cite{swain1991color}. Support vector machines~\cite{cortes1995svm} work
+well on fixed-length descriptors of this kind. For histograms the intersection
+kernel is a popular choice, and it is the kernel used in the PETA
+baseline~\cite{deng2014peta}.
 
 \subsection{Detection, Tracking and Counting}
-YOLO~\cite{redmon2016yolo} predicts every box in an image in one pass, which made
-real-time detection practical. YOLOv8~\cite{jocher2023yolov8} is a recent version
-that includes a small model suited to modest hardware. Counting people by
-detecting them is easy to audit because every count has a box behind it.
-Density-map methods estimate the size of a crowd without finding individuals and
-suit dense crowds better. A store entrance seldom holds more than a few dozen
-people at once, so detection is enough. Tracking by detection links boxes across
-frames. SORT~\cite{bewley2016sort} showed that a simple association step gives
-good results when the detector is reliable.
+YOLO~\cite{redmon2016yolo} predicts all the boxes in an image in a single pass,
+which made real-time detection practical. YOLOv8~\cite{jocher2023yolov8} is a
+recent member of the family and includes small models that run on modest hardware.
+Counting people by detecting them has the advantage of being easy to audit, since
+every count is backed by a box. Density-map methods estimate crowd size without
+locating individuals and are better suited to dense crowds, but a store entrance
+seldom holds more than a few dozen people at once, so detection is enough here.
+Tracking by detection links boxes across frames, and SORT~\cite{bewley2016sort}
+showed that even a simple association step works well when the detector is
+reliable.
 
 \subsection{Transfer Learning}
-A pretrained network is usually adapted in one of two ways. Linear probing trains
-a new output layer on frozen features. Full fine-tuning updates every weight.
-Kumar et al.~\cite{kumar2022finetuning} showed that fine-tuning from a randomly
-initialised head can distort the pretrained features and that probing first
-avoids much of the damage. We adopt this two-phase schedule with
+A pretrained network is usually adapted to a new task either by linear probing,
+where only a new output layer is trained on frozen features, or by full
+fine-tuning, where every weight is updated. Kumar et
+al.~\cite{kumar2022finetuning} showed that fine-tuning with a randomly initialised
+head can distort the pretrained features, and that probing first avoids much of
+this damage. We use this two-phase schedule together with
 AdamW~\cite{loshchilov2019adamw} and a cosine learning rate schedule with
 warmup~\cite{loshchilov2017sgdr}.
 
@@ -226,12 +240,13 @@ to one record per video.}
 \label{sec:system}
 
 \subsection{Overview}
-Fig.~\ref{fig:pipeline} shows the pipeline and Algorithm~\ref{alg:pipeline} gives
-it step by step. A video is read frame by frame. A detector finds people, and a
-tracker links the detections that belong to the same person. Crops of each
-tracked person go to the gender classifier and the age classifier. Their outputs
-are pooled per person. The result is written as one JSON record per video, and
-the dashboard reads that file.
+The overall pipeline is shown in Fig.~\ref{fig:pipeline}, and
+Algorithm~\ref{alg:pipeline} lists the steps in more detail. The video is read
+frame by frame, a detector finds the people in each frame, and a tracker links the
+detections that belong to the same person. Crops of every tracked person are
+passed to the gender and age classifiers, and their outputs are pooled per person.
+The result is saved as one JSON record per video, which is what the dashboard
+reads.
 
 \begin{algorithm}[t]
 \caption{Processing one video}
@@ -240,10 +255,10 @@ the dashboard reads that file.
 \Require frames $f_0, f_1, \dots$ at $r$ frames per second; stride $s$; IoU threshold $\tau$; vote gap $g$; vote cap $m$
 \Ensure one record per person
 \State $A \gets \emptyset$ \Comment{open tracks}
-\For{each frame $f_k$ with $k \bmod s = 0$}
+\For{every $s$-th frame $f_k$}
   \State $B \gets$ person boxes in $f_k$ with confidence $\geq 0.10$
-  \State $P \gets \{(t,b) : t \in A,\ b \in B,\ \mathrm{IoU}(t,b) \geq \tau\}$
-  \For{$(t,b) \in P$ in order of falling IoU}
+  \State $P \gets$ pairs of a track in $A$ and a box in $B$ with IoU $\geq \tau$
+  \For{each pair $(t,b)$ in $P$, highest IoU first}
     \If{$t$ and $b$ are both unmatched}
       \State extend $t$ with $b$
     \EndIf
@@ -267,98 +282,102 @@ the dashboard reads that file.
 
 \subsection{Detection and Tracking}
 \label{sec:tracking}
-We use YOLOv8n restricted to the person class with a confidence threshold of 0.4.
-Boxes smaller than $8\times16$ pixels are dropped because they hold too little
-detail to classify. Detection runs on every second frame, which halves its cost.
+Detection uses YOLOv8n restricted to the person class. A box needs a confidence of
+at least 0.4 to start a new track, but weaker boxes down to 0.10 are also kept and
+are handled as described in Section~\ref{sec:hunches}. Boxes smaller than
+$8\times16$ pixels are thrown away because they hold too little detail to
+classify, and detection is run on every second frame, which halves its cost.
 
-Tracking uses greedy matching on intersection over union (IoU). For two boxes $a$
-and $b$,
-\begin{equation}
-  \mathrm{IoU}(a,b) = \frac{|a \cap b|}{|a \cup b|}.
-\end{equation}
-Every pair of an open track and a new box with an IoU of at least 0.3 is a
-candidate. Candidates are taken in order of falling IoU, and a pair is accepted
-if neither side has been matched yet. A track is closed once it has missed as
-many sampled frames as the video has frames per second, which is two seconds at
-the default stride. Tracks seen in fewer than three frames are treated as
-detector noise and discarded.
+Tracking is done by greedy matching on intersection over union (IoU), that is, the
+area two boxes share divided by the total area they cover. Every pair of an open
+track and a new box with an IoU of 0.3 or more is a candidate. Candidates are
+taken from the highest IoU downwards, and a pair is accepted only if neither the
+track nor the box has been matched already. A track is closed once it has gone
+unmatched for as many sampled frames as the video has frames per second, which
+works out to two seconds at the default stride. Tracks seen in fewer than three
+frames are assumed to be detector noise and are dropped.
 
-Two rules keep one person from being counted several times. The first drops a
-box when half or more of it lies on a person who is already matched in that
-frame, which removes double detections such as a body and its reflection in
-glass. The second rejoins lost people. A person cannot vanish in the middle of
-the frame, so a track that ends there was lost by the detector. A box with a
-confidence of at least 0.25 that appears within one body height of that spot
-within 8\,s continues the old track. Near the edges of the frame people do leave
-and others arrive, so there a box rejoins a track only if that person was
-standing still and the box is in the same place.
+Two further rules stop one person from being counted several times. The first
+discards a box when half or more of it lies on a person who has already been
+matched in that frame. This removes double detections, for example a person and
+their reflection in a glass panel. The second rule rejoins people who have been
+lost. People rarely leave the scene from the middle of the frame, so a track that
+ends there has most likely been dropped by the detector. If a box with a
+confidence of at least 0.25 then appears within one body height of that spot
+within the next 8\,s, it continues the old track. Near the edges of the frame,
+where people really do leave and arrive, a box rejoins a track only if the earlier
+person was standing still and the new box is in the same place.
 
-The tracker has no appearance model. It is cheap, and Section~\ref{sec:limits}
-lists what it cannot do.
+The tracker has no appearance model. This keeps it cheap, but it also has clear
+weaknesses, which are listed in Section~\ref{sec:limits}.
 
 \subsection{Weak Detections and the Second Detector}
 \label{sec:hunches}
-The detector is run with a floor of 0.10, well below the 0.4 needed to start a
-track. Boxes in between are used in two ways. A weak box that overlaps a person
-already being followed extends that track, since a weak box on a known person is
-usually real. A weak box anywhere else opens a tentative track. A tentative
-track is followed like any other and counts for nothing.
+As mentioned above, the detector runs with a confidence floor of 0.10, well below
+the 0.4 needed to start a track. Boxes that fall in between are used in two ways.
+A weak box that overlaps someone who is already being tracked simply extends that
+track, since a weak detection on a known person is usually genuine. A weak box
+anywhere else opens a tentative track, which is followed like any other track but
+is not counted.
 
-A tentative track becomes a person in one of two ways. A later box of 0.4 or more
-on the same track confirms it. Failing that, once the track has eight
-detections a second and larger detector, YOLOv8m, is run on the same frame at
-input sizes of 640 and 960 pixels. If it finds a person with a confidence of at
-least 0.25 on that spot, the track is confirmed. The question is asked at most
-four times per track and at most once a second. A track that is never confirmed
-is dropped, and its location is remembered so that the same object is not asked
-about again.
+A tentative track can become a person in two ways. If a later box on the same
+track reaches 0.4, the track is confirmed. Otherwise, once the track has collected
+eight detections, a second and larger detector (YOLOv8m) is run on the same frame
+at input sizes of 640 and 960 pixels, and the track is confirmed if it finds a
+person on that spot with a confidence of 0.25 or more. This check is made at most
+four times per track and no more than once a second. A track that is never
+confirmed is discarded, and its location is remembered so that the same object is
+not checked again.
 
-A confirmed track keeps its history, so the dwell time of that person starts at
-the first weak sighting. If the track began where a known person was lost, the
-two are merged.
+Once confirmed, a track keeps its full history, so the dwell time of that person
+is counted from the first weak sighting. If the track started where a known person
+was recently lost, the two tracks are merged.
 
-The reason for this arrangement is cost. Section~\ref{sec:field} shows that the
-larger model finds people the small one misses and is six to eleven times
-slower. Asking it only about tentative tracks buys most of its benefit for a
-small part of its cost.
+The main reason for this arrangement is cost. As Section~\ref{sec:field} shows,
+the larger model finds people that the small one misses but is roughly six to
+eleven times slower. Running it only on tentative tracks gives most of its benefit
+for a small fraction of the cost.
 
 \subsection{Gender Classifier}
-Each crop is resized to $224\times224$ pixels and normalised with the ImageNet
-mean and standard deviation. The backbone is ViT-B/16 pretrained on ImageNet-21k,
-with 86 million parameters. It splits the crop into 196 patches, adds a class
-token and passes the sequence through 12 encoder layers. A pooling layer maps the
-class token to a vector of 768 dimensions. One linear layer with 1,538 parameters
-maps that vector to two logits, and a softmax turns them into probabilities
-(Fig.~\ref{fig:models}a). The loss is cross-entropy.
+\label{sec:gender}
+Each crop is resized to $224\times224$ pixels and normalised with the ImageNet mean
+and standard deviation. The backbone is the public ViT-B/16 checkpoint
+\texttt{google/vit-base-patch16-224}, which has 86 million parameters and was
+pretrained on ImageNet-21k and then fine-tuned on ImageNet-1k. It splits the crop
+into 196 patches, adds a class token and passes the sequence through 12 encoder
+layers. A pooling layer maps the class token to a 768-dimensional vector, and a
+single linear layer with 1,538 parameters maps that vector to two logits, which a
+softmax turns into probabilities (Fig.~\ref{fig:models}a). The loss is
+cross-entropy.
 
-Training runs in two stages, and each stage has two phases
-(Table~\ref{tab:training}). Phase~A is a linear probe. The backbone is frozen and
-only the new head is trained, with a learning rate of \sci{-3}. Phase~B unfreezes
-the backbone and trains the whole network with a learning rate of \sci{-5}.
-Stage~1 runs both phases on PETA. Stage~2 repeats them on labelled crops from the
-target store with both learning rates divided by ten, so that the model adapts
-without losing what it learned from PETA.
+One detail of this setup deserves mention. The public checkpoint does not include
+weights for the pooling layer, so that layer starts from random values. In our code
+it belongs to the backbone and so stays frozen during the linear probe described
+below, which means the probe is trained on a random projection of the class token.
+This may partly explain why the probe on its own stops at about 0.79 accuracy
+(Section~\ref{sec:gender-exp}).
 
-Each phase has its own schedule. The learning rate rises linearly from zero over
-the first part of the phase and then falls to zero on a cosine curve
-(Fig.~\ref{fig:schedule}). With $T$ steps in the phase and a warmup ratio $w$,
-the rate at step $i$ is
-\begin{equation}
-  \eta_i = \eta_{\max}\cdot
-  \begin{cases}
-    \dfrac{i}{wT} & i < wT,\\[2.5mm]
-    \dfrac{1}{2}\left(1+\cos\dfrac{\pi\,(i-wT)}{T-wT}\right) & i \geq wT.
-  \end{cases}
-\end{equation}
+Training runs in two stages, each with two phases (Table~\ref{tab:training}). In
+Phase~A, the linear probe, the backbone is frozen and only the new head is trained,
+with a learning rate of \sci{-3}. In Phase~B the backbone is unfrozen and the whole
+network is trained with a learning rate of \sci{-5}. Stage~1 runs both phases on
+PETA. Stage~2 repeats them on labelled crops from the target store, with both
+learning rates divided by ten so that the model can adapt to the store without
+forgetting what it learned from PETA. Stage~2 is part of the training code, but we
+do not evaluate it in this paper.
 
-All runs use AdamW~\cite{loshchilov2019adamw} with a batch size of 64, mixed
-precision and gradient clipping at 1.0. Training images are flipped horizontally
-with probability 0.5 and receive a small random change in brightness, contrast
-and saturation. One tenth of the data is held out for validation with a
-stratified split.
+Within each phase the learning rate rises linearly from zero over the first part
+of the phase, a fraction set by the warmup ratio, and then decays to zero along a
+cosine curve (Fig.~\ref{fig:schedule}). All runs use
+AdamW~\cite{loshchilov2019adamw} with a batch size of 64, mixed precision and
+gradient clipping at 1.0. Training images are flipped horizontally with
+probability 0.5 and their brightness, contrast and saturation are jittered
+slightly. One tenth of the data is held out for validation, using a split
+stratified by gender.
 
 \begin{table}[t]
-\caption{Training schedule of the gender model}
+\caption{Training schedule of the gender model, with the settings chosen in
+Section~\ref{sec:gender-exp}}
 \label{tab:training}
 \centering
 \begin{tabular}{@{}llccc@{}}
@@ -379,9 +398,9 @@ Stage & Phase & Trained & Epochs & Peak rate \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{lr_schedule.pdf}
-\caption{Learning rate over Stage~1 with the selected settings. Each phase warms
-up for a fifth of its steps and then decays on a cosine curve. The vertical axis
-is logarithmic.}
+\caption{Learning rate over Stage~1 with the chosen settings. Each phase warms up
+over the first fifth of its steps and then follows a cosine decay. Note that the
+vertical axis is logarithmic.}
 \label{fig:schedule}
 \end{figure}
 
@@ -414,79 +433,74 @@ is logarithmic.}
   \end{scope}
   \node[font=\footnotesize\bfseries, text=ink, left=4mm of b1] {(b)};
 \end{tikzpicture}
-\caption{The two attribute classifiers. (a) The gender network: a pretrained
-ViT-B/16 with a new linear head. (b) The age model: region histograms scored by
-one SVM for each age group.}
+\caption{The two attribute classifiers. (a) The gender network, a pretrained
+ViT-B/16 with a new linear head. (b) The age model, in which region histograms are
+scored by one SVM for each age group.}
 \label{fig:models}
 \end{figure*}
 
 \subsection{Age Classifier}
-The age model uses no neural network. Each crop is cut into $R$ horizontal
-regions of equal height. With four regions they correspond roughly to the head,
-the torso, the upper legs and the lower legs. Two kinds of histogram are computed
-for each region. The first is colour: one histogram of $B$ bins for each of the
-red, green, blue, hue and saturation channels. The second is texture: one
-histogram of uniform LBP codes for each radius in a set $\mathcal{S}$, computed
-with $Q$ sampling points and therefore $Q+2$ bins. Every histogram is
-L1-normalised. The histograms of all regions are concatenated into one feature
-vector (Fig.~\ref{fig:models}b) of length
+The age model does not use a neural network at all. Each crop is cut into $R$
+horizontal strips of equal height; with four strips these correspond roughly to
+the head, the torso, the upper legs and the lower legs. Two kinds of histogram are
+computed for every strip. For colour there is one histogram of $B$ bins for each of
+the red, green, blue, hue and saturation channels. For texture there is one
+histogram of rotation-invariant uniform LBP codes for each radius in a set
+$\mathcal{S}$, computed with $Q$ sampling points, which gives $Q+2$ bins per
+radius. All histograms are L1-normalised and the histograms of all strips are
+concatenated into one feature vector (Fig.~\ref{fig:models}b) of length
 \begin{equation}
   d = R\,\bigl(5B + |\mathcal{S}|\,(Q+2)\bigr).
   \label{eq:dim}
 \end{equation}
 
-One SVM is trained for each of four age groups: 16 to 30, 31 to 45, 46 to 60 and
-above 60. Each is a binary classifier that separates its group from the other
-three. For every group we search over two kernels. The histogram intersection
-kernel is
+We train one SVM for each of the four age groups, 16 to 30, 31 to 45, 46 to 60 and
+above 60. Each one is a binary classifier that separates its own group from the
+other three. For every group we try two kernels: the histogram intersection kernel
 \begin{equation}
   K(\mathbf{x},\mathbf{y}) = \sum_{i}\min(x_i, y_i),
 \end{equation}
-and the radial basis function (RBF) kernel is
-\begin{equation}
-  K(\mathbf{x},\mathbf{y}) = \exp\!\left(-\gamma\,\lVert\mathbf{x}-\mathbf{y}\rVert^{2}\right).
-\end{equation}
-The search covers $C \in \{0.01, 0.1, 1, 10, 100\}$ for both kernels and
-$\gamma \in \{0.001, 0.01, 0.1, 1\}$ for the RBF kernel, 25 settings in all. The
-setting with the highest validation mean accuracy is kept for that group. Mean
-accuracy for one attribute is
+and the standard radial basis function (RBF) kernel with width parameter $\gamma$.
+The penalty $C$ is searched over $\{0.01, 0.1, 1, 10, 100\}$ for both kernels and
+$\gamma$ over $\{0.001, 0.01, 0.1, 1\}$ for the RBF kernel, which gives 25 settings
+per group, and the one with the highest validation mean accuracy is kept. For a
+single attribute, mean accuracy is
 \begin{equation}
   \mA = \frac{1}{2}\left(\frac{\mathit{TP}}{P} + \frac{\mathit{TN}}{N}\right),
   \label{eq:ma}
 \end{equation}
 where $P$ and $N$ are the numbers of positive and negative examples and
-$\mathit{TP}$ and $\mathit{TN}$ are the numbers of each that are classified
-correctly. At test time a crop receives the label of the SVM with the largest
-decision value.
+$\mathit{TP}$ and $\mathit{TN}$ are how many of each are classified correctly. At
+test time a crop is given the age group whose SVM returns the largest decision
+value.
 
-PETA also labels people under 15. That group has too few examples to train a
-stable classifier, and early models underfitted it every time. We left it out.
+PETA also has a label for people under 15, but there are too few such images to
+train a stable classifier, and our early models underfitted this group every time.
+We therefore left it out.
 
 \subsection{Pooling Predictions per Person}
-A single crop can be blurred or partly hidden. A person is visible for many
-frames, so IFAS classifies each track several times and combines the answers. A
-track is classified at most once every 0.4\,s and at most 12 times in total.
-Spacing the samples keeps them from being near copies of one another, and the cap
-bounds the cost of a person who stands in view for minutes.
+Any single crop may be blurred or partly hidden, but a person is usually visible
+for many frames, so IFAS classifies each track several times and combines the
+answers. A track is classified at most once every 0.4\,s and at most 12 times in
+total. Spacing the samples out avoids classifying near-identical crops, and the
+cap limits the cost of someone who stays in view for several minutes.
 
-Let $\mathbf{p}_1,\dots,\mathbf{p}_n$ be the probability vectors a model returns
-for the $n$ crops of one track. Each crop casts a vote for its most probable
-label. The track receives the label $\hat{c}$ with the most votes, and a tie goes
-to the label with the higher summed probability. The confidence reported for the
-person is the share of the summed probability held by that label,
-\begin{equation}
-  \mathrm{conf} = \frac{\sum_{j=1}^{n} p_{j,\hat{c}}}{\sum_{j=1}^{n}\sum_{c} p_{j,c}}.
-\end{equation}
-SVM decision values are passed through a softmax first, so that age confidence is
-on the same scale as gender confidence.
+Each classified crop votes for the label it finds most probable, and the track
+receives the label with the most votes, with ties going to the label with the
+higher total probability. The confidence we report for a person is simply the
+average probability that the crops gave to the winning label. For the age model,
+the SVM decision values are first turned into a distribution with a softmax. This
+puts age confidence in the same 0 to 1 range as gender confidence, but the two are
+not calibrated against each other and should not be compared directly.
 
 \subsection{Analytics and Dashboard}
-From each track IFAS takes the time the person was first seen, the time they were
-last seen and the dwell time between the two. Dwell time is sorted into the five
-tiers of Table~\ref{tab:tiers}. The video is divided into bins of 5\,s. For each
-bin the record holds the number of arrivals, the number of exits and the mean and
-peak number of people in view. A grid of $16\times9$ cells over the frame
-accumulates where people stood, and the frame is split into three vertical zones.
+For every track IFAS records when the person was first and last seen and the dwell
+time in between, and sorts the dwell time into one of the five tiers in
+Table~\ref{tab:tiers}. The video is also divided into 5\,s bins, and for each bin
+the record stores the number of arrivals and exits along with the mean and peak
+number of people in view. A grid of $16\times9$ cells laid over the frame
+accumulates where people stood, and the frame is further divided into three
+vertical zones.
 
 \begin{table}[t]
 \caption{Dwell tiers}
@@ -505,43 +519,50 @@ Dwelling & over 60\,s    & waited or queued \\
 \end{tabular}
 \end{table}
 
-Recordings differ in length, so IFAS compares them by rate. Every recording is
-split by the clock hours it covers, and each hour $h$ stores the arrivals $a_h$
-and the minutes $m_h$ that were watched. The rate for any group $H$ of hours,
-such as all Saturdays, is
-\begin{equation}
-  \rho_H = 60\,\frac{\sum_{h \in H} a_h}{\sum_{h \in H} m_h}
-\end{equation}
-arrivals per observed hour. A three minute clip then cannot outweigh a three
-hour export. A day needs at least five minutes of footage to count, and a trend
-is drawn only when three such days exist.
+Since recordings vary in length, IFAS compares them by rate rather than by raw
+count. Each recording is split by the clock hours it covers, and for every hour we
+store the number of arrivals and the number of minutes that were actually watched.
+The arrival rate for any group of hours, such as all Saturdays, is the total
+number of arrivals in those hours divided by the total minutes watched, expressed
+per hour. This way a three-minute clip cannot outweigh a three-hour export. A day
+is only included if it has at least five minutes of footage, and a trend is drawn
+only once three such days are available.
 
-For a coarser summary a recording can also be divided into five equal intervals.
-Each interval reports the mean, peak and minimum number of people in view and
-the standard deviation of that number. A low standard deviation marks steady
-flow and a high one marks a surge. Each interval receives one of six density
-labels from Empty to Overcrowded. This labelling is at an earlier stage than the
-rest of the system and is not evaluated here.
-
-A dashboard presents the record at two levels of detail. The simple level states
-the result in sentences and shows a few headline charts for whoever runs the
-store. The detailed level adds filters by gender, age, dwell tier and confidence,
-a table of every tracked person and the confidence distributions of both models.
+The dashboard shows the results at two levels of detail. The simple view, meant for
+the store manager, summarises the findings in plain sentences alongside a few
+headline charts. The detailed view adds filters by gender, age group, dwell tier
+and confidence, a table of every tracked person and the confidence distributions
+of both models.
 
 % ---------------------------------------------------------------------------
 \section{Experiments}
 \label{sec:experiments}
 
 \subsection{Data}
-All experiments use PETA~\cite{deng2014peta}. The gender model uses every image
-with a gender label, about 19,000 in all, with one tenth held out for validation.
+\label{sec:data}
+All experiments use PETA~\cite{deng2014peta}. For the gender model we use every
+image that has a gender label, about 19,000 in all, and hold out one tenth for
+validation.
 
-The age model uses the 14,241 images that carry one of the four retained age
-labels. Fig.~\ref{fig:agedata} shows how they are spread. The two youngest groups
-hold 79\% of the images and the oldest holds 8\%. We split the images into
-training, validation and test sets in the proportions of the PETA protocol,
-9,500 to 1,900 to 7,600. This gives 7,120 training, 1,424 validation and 5,697
-test images. The split is stratified by age group.
+The age model uses the 14,241 images labelled with one of the four age groups we
+keep. They come from nine of PETA's ten subsets: the CUHK subset labels each image
+by its file name rather than by person, and our loader did not read it, so its
+4,563 images are not included. Fig.~\ref{fig:agedata} shows how they are distributed: the two youngest
+groups hold 79\% of the images and the oldest only 8\%. We split them into
+training, validation and test sets in the same 9,500\,:\,1,900\,:\,7,600
+proportions as the PETA protocol, giving 7,120 training, 1,424 validation and
+5,697 test images, stratified by age group.
+
+Both splits are made at the image level. PETA contains several images of many of
+its 8,705 people, so the same person can end up in the training data and in the
+validation or test data. This is the same problem Jia et
+al.~\cite{jia2021rethinking} found in the standard PETA partition. We measured
+how large it is: in an image-level split with these proportions, about three in
+four test images from the nine subsets that identify people (74 to 75\% over five
+random splits) show a person who also appears in the training set. The
+accuracies reported in this section are therefore likely to be higher than what
+the models would achieve on people they have never seen, such as new customers in
+a store.
 
 \begin{figure}[t]
 \centering
@@ -552,11 +573,15 @@ model.}
 \end{figure}
 
 \subsection{Gender Model}
-We varied four settings of Stage~1 one at a time: the backbone learning rate, the
+\label{sec:gender-exp}
+We varied four Stage~1 settings one at a time: the backbone learning rate, the
 number of linear probe epochs, the weight decay and the warmup ratio.
-Table~\ref{tab:gender} lists the values and Fig.~\ref{fig:gender} shows the
-results. Schedules were short, between three and seven epochs in total, and each
-setting was trained once.
+Table~\ref{tab:gender} lists the values tried and Fig.~\ref{fig:gender} shows the
+results. To keep the study affordable the runs were short, between three and seven
+epochs in total, and each setting was trained only once. With about 1,900
+validation images and accuracy near 97.5\%, the standard error of a single
+validation accuracy is roughly 0.36 points, and differences smaller than that
+should be treated as noise.
 
 \begin{table}[t]
 \caption{Stage 1 settings tested for the gender model}
@@ -579,49 +604,59 @@ Warmup ratio & 0, 0.05, 0.1, 0.2, 0.3, 0.4 & 0.2 \\
 \includegraphics[width=\textwidth]{gender_sensitivity.pdf}
 \caption{Sensitivity of the gender model to four training settings on PETA. The
 selected value is filled in blue. (a) Validation accuracy during fine-tuning for
-three backbone learning rates. Epoch 0 is the end of the linear probe. (b) to (e)
+three backbone learning rates; epoch 0 is the end of the linear probe. (b) to (e)
 Final validation accuracy, or the gap between training and validation accuracy,
-with one setting varied and the rest fixed. Each point is a single run.}
+with one setting varied and the others fixed. Each point is a single run.}
 \label{fig:gender}
 \end{figure*}
 
-\textit{Learning rate.} With a backbone learning rate of \sci{-7} the model
-barely moves. Validation accuracy stays near 0.80, the level the linear probe
-reaches alone. Rates of \sci{-4} and \sci{-5} both converge, to 0.992 and 0.983
-after four epochs of fine-tuning (Fig.~\ref{fig:gender}a). The higher rate scores
-better here, but the run is short. We chose \sci{-5} because a smaller step is
-less likely to damage the pretrained features over the longer schedule of the
-final model. These runs fine-tuned for one epoch longer than the probing and
-weight decay runs, so their accuracy is not comparable with the panels that
-follow.
+\textit{Learning rate.} With a backbone learning rate of \sci{-7} the model hardly
+changes, and validation accuracy stays around 0.80, roughly what the linear probe
+reaches on its own. Rates of \sci{-4} and \sci{-5} both converge, reaching 0.992
+and 0.983 after four epochs of fine-tuning (Fig.~\ref{fig:gender}a). The higher
+rate did a little better in this short run, but we chose \sci{-5} because a smaller
+step is less likely to damage the pretrained features over the longer schedule of
+the final model. This is a judgement on our part rather than something the
+experiment shows. These runs also fine-tuned for one epoch longer than the probing
+and weight decay runs, so their numbers cannot be compared directly with the other
+panels.
 
 \textit{Linear probe.} Skipping the probe gives the lowest accuracy, 96.8\%. Any
-amount of probing helps, and four epochs give the highest accuracy at 97.8\%
-(Fig.~\ref{fig:gender}b). The trend is not monotonic, since two epochs score
-below one. With one run per setting we read that dip as noise. The training loss
-points the other way. Without a probe the loss over the first 200 steps of
-fine-tuning falls lower than with one. Lower training loss with lower validation
-accuracy is what we would expect if the network fits the training set at the
-expense of its pretrained features~\cite{kumar2022finetuning}.
+amount of probing helps, and four epochs gave the best result at 97.8\%
+(Fig.~\ref{fig:gender}b). The trend is not monotonic, since two epochs scored
+lower than one, which we put down to run-to-run noise. Interestingly, the training
+loss tells the opposite story: over the first 200 steps of fine-tuning, the loss
+falls further without a probe than with one. Lower training loss together with
+lower validation accuracy is what we would expect if the network were fitting the
+training set at the cost of its pretrained features~\cite{kumar2022finetuning}.
 
-\textit{Weight decay.} Accuracy is lowest without weight decay at 97.39\% and
-highest at a decay of 0.3 with 97.71\%. The gap between training and validation
-accuracy is also smallest at 0.3: 1.67 points against 2.14 points without decay
-(Fig.~\ref{fig:gender}c and~d). The whole range spans a third of a point. The
-effect is small, but both measures point the same way.
+\textit{Weight decay.} Accuracy was lowest without weight decay (97.39\%) and
+highest at a decay of 0.3 (97.71\%), and the gap between training and validation
+accuracy was also smallest at 0.3, at 1.67 points compared with 2.14 points with no
+decay (Fig.~\ref{fig:gender}c and~d). However, the whole range across the seven
+values is only about a third of a point, which is within the noise of a single
+run. The study does not really separate these values, and we kept 0.3 mainly
+because it came out on top in both measures.
 
-\textit{Warmup.} Training without warmup gives the lowest accuracy, 96.86\%. A
-ratio of 0.2 gives the highest at 97.68\%, with 0.05 close behind at 97.61\%
-(Fig.~\ref{fig:gender}e). The values in between follow no clear order.
+\textit{Warmup.} Training without warmup gave the lowest accuracy, 96.86\%. A
+ratio of 0.2 gave the highest at 97.68\%, with 0.05 close behind at 97.61\%
+(Fig.~\ref{fig:gender}e). The non-zero ratios follow no clear order.
 
-Taken together, the probe moves accuracy by 1.0 point across its range, warmup
-by 0.8 and weight decay by 0.3.
+Overall, the probe changes accuracy by 1.0 point across its range, warmup by 0.8
+and weight decay by 0.3. Only the first two are clearly larger than the noise
+level. We should also be clear about where the 97.8\% figure in the abstract comes
+from. It is the best run of the probe study (four probe epochs followed by three
+epochs of fine-tuning), not a run of the full schedule in Table~\ref{tab:training}.
+It was also picked on the same validation set it is reported on, and it is
+affected by the identity overlap described in Section~\ref{sec:data}, so it is
+best read as an upper estimate.
 
 \subsection{Age Model: Feature Settings}
-Feature settings were screened on a 30\% subsample of the training and validation
-data to keep the search fast. The settings were tuned in the order listed in
-Table~\ref{tab:age-config}, and each choice was fixed before the next was tuned.
-Fig.~\ref{fig:age} shows the average $\mA$ over the four age groups.
+To keep the search fast, the feature settings were screened on a 30\% subsample of
+the training and validation data. We tuned them in the order listed in
+Table~\ref{tab:age-config}, fixing each choice before moving on to the next, so
+interactions between settings were not explored. Fig.~\ref{fig:age} shows the
+average $\mA$ over the four age groups.
 
 \begin{table}[t]
 \caption{Feature settings tested for the age model}
@@ -649,26 +684,28 @@ The selected value is filled in blue.}
 \label{fig:age}
 \end{figure*}
 
-The number of body regions matters most. Average $\mA$ rises from 0.7155 with two
-regions to 0.7457 with four and then falls slightly (Fig.~\ref{fig:age}a).
-Regions thinner than a quarter of the body hold too few pixels for a stable
-histogram. Colour bins behave the same way. Sixteen bins score 0.7457, and 32
-bins drop to 0.7220 as the histograms become sparse (Fig.~\ref{fig:age}b). The
-number of LBP sampling points has a smaller effect, with 16 points best at 0.7493
-(Fig.~\ref{fig:age}c). The five combinations of LBP radii we tried scored within
-a narrow band, and radii of 1, 2 and 3 were marginally best. Balanced class
-weights raise average $\mA$ from 0.7432 to 0.7493 (Fig.~\ref{fig:age}d), as
-expected given the imbalance in Fig.~\ref{fig:agedata}.
+The number of body regions has the largest effect. Average $\mA$ rises from 0.7155
+with two regions to 0.7457 with four and then drops off slightly
+(Fig.~\ref{fig:age}a). Our explanation is that strips thinner than a quarter of
+the body contain too few pixels for a stable histogram. Colour bins behave in a
+similar way: 16 bins score 0.7457, while 32 bins fall to 0.7220 as the histograms
+become sparse (Fig.~\ref{fig:age}b). The number of LBP sampling points matters
+less, with 16 points doing best at 0.7493 (Fig.~\ref{fig:age}c). The five
+combinations of LBP radii we tried all scored within a narrow band, with radii of
+1, 2 and 3 marginally ahead. Finally, balanced class weights raised average $\mA$
+from 0.7432 to 0.7493 (Fig.~\ref{fig:age}d), which is expected given the imbalance
+in Fig.~\ref{fig:agedata}.
 
 \subsection{Age Model: Final Classifiers}
 We trained the final SVMs on the full training set in two configurations
-(Table~\ref{tab:age-results}). The first is the one released with the pipeline.
-It uses five regions and eight LBP points, which by~\eqref{eq:dim} gives 550
-features per crop. The second uses the settings selected above, four regions and
-16 points, for 536 features. The grid search chose the RBF kernel for every group
-in both. The two configurations are close on the validation split, with a mean
-$\mA$ of 0.821 and 0.823. The selected one is better for the oldest group, 0.920
-against 0.911.
+(Table~\ref{tab:age-results}). The first is the configuration released with the
+pipeline. It uses five regions and eight LBP points, which by~\eqref{eq:dim} gives
+550 features per crop. The second uses the settings selected above, four regions
+and 16 points, for 536 features. In both cases the grid search picked the RBF
+kernel for every age group, so neither configuration ends up using the
+intersection kernel of the PETA baseline. On the validation split the two are very
+close, with mean $\mA$ of 0.821 and 0.823, and the selected configuration does
+slightly better on the oldest group (0.920 against 0.911).
 
 \begin{table}[t]
 \caption{Final age classifiers: kernel settings and validation mA}
@@ -691,26 +728,29 @@ Mean     &    &     & 0.8206 &    &     & 0.8226 \\
 \end{table}
 
 \subsection{Age Model: Test Results}
-The released classifiers were evaluated once on the 5,697 held-out test images.
-Table~\ref{tab:age-test} and Fig.~\ref{fig:agetest} give the results. Mean
-accuracy is 0.8352 averaged over the four groups, slightly above the validation
-figure of 0.8206. The largest change is for the 46 to 60 group, which rises from
-0.790 to 0.831.
+The released classifiers were evaluated once on the 5,697 held-out test images,
+and Table~\ref{tab:age-test} and Fig.~\ref{fig:agetest} summarise the results.
+Mean accuracy averaged over the four groups is 0.8352, a little above the
+validation figure of 0.8206. The biggest change is in the 46 to 60 group, which
+goes from 0.790 to 0.831. The validation set holds only about 180 images from this
+group, so we read the rise as sampling variation rather than a real improvement.
 
-Read as a single four-way classifier, the model labels 76.7\% of test images
-correctly, with a macro-averaged F1 of 0.78. The oldest group is the easiest,
-with a precision of 0.90 and a recall of 0.85. The 46 to 60 group is the hardest,
-with an F1 of 0.73.
+When the four SVMs are used together as one four-way classifier, 76.7\% of test
+images are labelled correctly and the macro-averaged F1 score is 0.78. The oldest
+group is the easiest, with a precision of 0.90 and a recall of 0.85, while the 46
+to 60 group is the hardest, with an F1 of 0.73.
 
 The confusion matrix in Fig.~\ref{fig:agetest}a shows where the errors go. Of the
-1,330 misclassified images, 1,057 are placed in a group next to the true one.
-That is 79.5\% of all errors. Counting those as near misses, 95.2\% of test
-images land in the true group or a neighbouring one. The single largest
-confusion is between the two youngest groups: 23\% of people aged 31 to 45 are
-labelled 16 to 30, and 14\% the other way.
+1,330 misclassified images, 1,057 (79.5\%) are put in a group next to the true
+one. If such near misses are accepted, 95.2\% of test images land in the correct
+group or a neighbouring one. The most common confusion is between the two youngest
+groups: 23\% of people aged 31 to 45 are labelled 16 to 30, and 14\% are confused
+the other way round.
 
 \begin{table}[t]
-\caption{Released age model on the PETA test split}
+\caption{Released age model on the PETA test split. Precision, recall and F1
+treat the four SVMs as one four-way classifier; mA uses each SVM's own
+one-vs-rest decisions.}
 \label{tab:age-test}
 \centering
 \begin{tabular}{@{}lccccc@{}}
@@ -739,19 +779,20 @@ One-vs-rest mean accuracy on the validation and test splits.}
 
 \subsection{Runtime}
 \label{sec:runtime}
-We timed each stage on a laptop with an AMD Ryzen~3 3250U processor, two cores
-and no graphics card. The input was a recording of $848\times478$ pixels, and the
-classifiers were timed on the person crops the detector found in it.
-Fig.~\ref{fig:runtime} shows the median times.
-Detection takes \tDetect\,ms per frame. The age model takes \tAge\,ms per crop,
-of which \tAgeFeat\,ms is spent computing histograms. The gender network takes
-\tGender\,ms per crop in a batch of 16 and \tGenderOne\,ms for a single crop, and
-it dominates the cost. This is why votes are capped. With 12 votes the two
-classifiers cost under \tPerson\,s per person on this machine, no matter how long
-the person stays in view. Without the cap the cost would grow with dwell time, since
-at the default stride a person is detected about a dozen times a second. On a
-processor of this class IFAS is a tool for recorded footage. A live feed would
-need faster hardware.
+We timed each stage on a laptop with a two-core AMD Ryzen~3 3250U processor and no
+dedicated graphics card. The input was an $848\times478$ recording, and the
+classifiers were timed on the person crops the detector found in it. Median times
+are shown in Fig.~\ref{fig:runtime}. Detection takes \tDetect\,ms per frame. The
+age model needs \tAge\,ms per crop, of which \tAgeFeat\,ms goes into computing the
+histograms. The gender network takes \tGender\,ms per crop in batches of 16 and
+\tGenderOne\,ms for a single crop, and it accounts for most of the total cost,
+which is why the number of votes is capped. With at most 12 votes, the two
+classifiers cost under \tPerson\,s per person on this machine however long the
+person stays. Without the cap, a person would be classified up to two and a half
+times for every second they spend in view, so a customer who stayed for a minute
+would need about 150 classifications and nearly two and a half minutes of
+computation. On a processor of this class IFAS is therefore a tool for recorded
+footage, and a live feed would need faster hardware.
 
 \begin{figure}[t]
 \centering
@@ -764,22 +805,26 @@ crop.}
 
 \subsection{Field Check on Shop Footage}
 \label{sec:field}
-PETA measures the classifiers. It says nothing about detection or tracking, so we
-ran the whole pipeline on a recording from outside the dataset: 15\,s of a shop
-interior at $1280\times720$ pixels, with glass partitions and stacked boxes. We
-labelled it by eye. Five people are in view for the whole clip. A man sits in
-the open. A second man walks across the room and works behind a glass partition.
-A third person sits at a desk at the left edge of the frame. A fourth sits behind
-glass at the back. A fifth stands almost fully hidden behind the third.
+PETA only measures the classifiers and tells us nothing about detection or
+tracking. To get some sense of these, we ran the whole pipeline on a recording from
+outside the dataset: a 15\,s clip of a shop interior at $1280\times720$ pixels,
+with glass partitions and boxes stacked around the room. We annotated the clip by
+eye. Five people are in view for the whole clip: a man seated in the open, a second
+man who walks across the room and then works behind a glass partition, a person
+sitting at a desk on the left edge of the frame, a person seated behind glass at
+the back, and a fifth person standing almost fully hidden behind the third.
 
-\textit{Detection.} Table~\ref{tab:detectors} shows how often four of these
-people are detected in 32 evenly spaced frames. The fifth is never detected as a
-separate person by any setting. No setting finds everyone. The small model at
-its normal threshold never finds the person behind glass. The medium model at
-960 pixels finds that person in 44\% of frames and loses the person at the left
-desk. At a threshold of 0.05 the small model fires on all four people, but it
-also fires on a display stand, and with a higher confidence than on the person
-behind glass. A lower threshold alone cannot tell the two apart.
+\textit{Detection.} Table~\ref{tab:detectors} shows how often four of these people
+are detected in 32 evenly spaced frames. The fifth is never detected as a separate
+person under any setting, and no setting finds everyone. At its normal threshold
+the small model never finds the person behind glass. The medium model at 960
+pixels finds that person in 44\% of frames, but then picks up the person at the
+left desk in only 25\% of them. Dropping the small model's threshold to 0.05 finds
+all four people, but it also fires on a display stand, and with higher confidence
+than it gives the person behind glass, so a lower threshold alone cannot tell the
+two apart. The YOLOv8n time in this table (183\,ms) differs from the \tDetect\,ms
+of Section~\ref{sec:runtime} because it was measured on a different clip in a
+separate run.
 
 \begin{table}[t]
 \caption{Share of 32 frames in which each person is detected at a confidence
@@ -805,20 +850,21 @@ YOLOv8n, 640, at 0.05 & 183 & 100\% & 81\% & 100\% & 100\% \\
 \end{table}
 
 \textit{Tracking.} Table~\ref{tab:field} compares two versions of the pipeline on
-this clip. The first uses IoU matching alone with a single threshold of 0.4. The
-second adds the rules of Sections~\ref{sec:tracking} and~\ref{sec:hunches}. The
-first version reports five visitors, which happens to equal the true number and
-is wrong in every detail. The walking man is counted three times, because the
-detector loses him behind the glass. Two people are missed. The mean dwell time
-is 4.3\,s for people who were present for 15\,s, and three of five tracks are
-labelled as passing through.
+this clip. The first uses IoU matching alone with a single confidence threshold of
+0.4, and the second adds the rules from Sections~\ref{sec:tracking}
+and~\ref{sec:hunches}. The first version reports five visitors. This happens to be
+the true number, but the details behind it are all wrong. The walking man is
+counted three times, because the detector loses him behind the glass, and two
+people are missed altogether. The mean dwell time comes out at 4.3\,s for people
+who were present for the full 15\,s, and three of the five tracks are classed as
+passing through.
 
-The second version reports four visitors, and each is a different real person.
-The walking man is one track. The person at the left desk is followed for the
-whole clip, and the person behind glass is confirmed by the second detector. The
-display stand is opened as a tentative track twice and rejected both times. The
-second detector was consulted on 11 of the 188 sampled frames. Processing time
-on the laptop rose from 77\,s to 205\,s.
+The second version reports four visitors, each of them a different real person.
+The walking man is followed as a single track, the person at the left desk is
+tracked for the whole clip, and the person behind glass is confirmed by the second
+detector. The display stand opens a tentative track twice and is rejected both
+times. The second detector was consulted on 11 of the 188 sampled frames, and the
+processing time on the laptop went up from 77\,s to 205\,s.
 
 \begin{table}[t]
 \caption{The pipeline on the shop clip, before and after the tracking rules.
@@ -842,99 +888,120 @@ Mean dwell time     & 4.3\,s & 14.1\,s \\
 \end{tabular}
 \end{table}
 
-This is one clip, chosen because it is hard, and the rules were tuned on it. It
-shows what kind of error the first version made and what kind of rule removes
-it. It is not a measurement of accuracy. The classifiers also did less well here
-than on PETA. Gender was stable for the three people who are clearly visible and
-close to a coin toss for the person at the left desk, with a confidence of 0.56.
-Age confidence stayed below 0.45 for everyone.
+We stress that this is a single clip, chosen because it is difficult, and that the
+tracking rules were tuned on this same clip. The comparison shows what kind of
+error the basic version makes and what kind of rule fixes it, but it is not a
+measurement of accuracy. The classifiers also did worse here than on PETA. Gender
+was stable for the three people who are clearly visible, but for the person at the
+left desk it was close to a coin toss, with a confidence of 0.56. Age confidence
+stayed below 0.45 for everyone. Part of this is due to the softmax over SVM
+decision values, which can give a fairly flat distribution even when one SVM is
+clearly ahead, so these values should not be read as calibrated probabilities.
 
 % ---------------------------------------------------------------------------
 \section{Discussion}
 \label{sec:discussion}
 
 \subsection{Staged Transfer Learning}
-The probing result agrees with Kumar et al.~\cite{kumar2022finetuning}. A new head
-starts with random weights, and its first gradients are large and carry little
-information. If the backbone is trainable at that point those gradients flow into
-it. Training the head alone first removes the problem at the cost of a few short
-epochs.
+Our probing result is in line with Kumar et al.~\cite{kumar2022finetuning}. A newly
+added head starts from random weights, so its first gradients are large and carry
+little useful information, and if the backbone is trainable at that point these
+gradients flow straight into it. Training the head alone for a few epochs first
+avoids the problem at little extra cost. In our case the randomly initialised
+pooling layer described in Section~\ref{sec:gender} adds a second set of random
+weights, and moving it into the head, or reading the class token directly, is
+worth testing.
 
-The preferred weight decay of 0.3 is higher than the range of 0.01 to 0.1 often
-used with AdamW. PETA has 19,000 images and ViT-B/16 has 86 million parameters,
-so a need for stronger regularisation is plausible. The measured differences are
-small, and each rests on one run. Repeating the study with several random seeds
-is the first thing we would do with more compute.
+The weight decay of 0.3 that came out best is higher than the 0.01 to 0.1 usually
+used with AdamW. With about 19,000 images and 86 million parameters, it is
+plausible that stronger regularisation helps, but as noted in
+Section~\ref{sec:gender-exp} the measured differences are within single-run noise.
+Repeating the study with several random seeds is the first thing we would do with
+more compute.
 
 \subsection{Reading the Age Results}
 The oldest group is the easiest on every measure. Grey or white hair changes the
-colour histogram of the top region, and posture and clothing may add to the
-signal. This is our reading of the result. We did not test which features carry
-it.
+colour histogram of the top region, and posture or clothing may also contribute,
+although this is only our interpretation and we did not test which features are
+actually responsible.
 
-The two youngest groups are confused with each other more than any other pair. A
-person of 29 and a person of 32 fall on opposite sides of a boundary and look
-alike at surveillance resolution. The confusion matrix supports this view of the
-errors as boundary effects. Four errors in five are off by one group, and errors
-of two or three groups make up 4.8\% of the test set. For a store that wants a
-rough age profile of its visitors, an error of one group matters far less than
-an error of three. A measure that respects the order of the groups would credit
-the model for this, and mean accuracy does not.
+The two youngest groups are confused with each other more than any other pair,
+which is not very surprising, since a 29-year-old and a 32-year-old fall on
+opposite sides of a boundary but look much the same at surveillance resolution.
+The confusion matrix supports the view that most errors are boundary effects: four
+errors in five are off by a single group, and errors of two or three groups make up
+only 4.8\% of the test set. For a store that wants a rough age profile of its
+visitors, being one group out matters far less than being three groups out. Mean
+accuracy does not reward this, whereas a measure that respects the order of the
+groups would.
 
-The oldest group has only 8\% of the data and still reaches a recall of 0.85.
-Balanced class weights push each SVM to find its positives, and this result
-suggests they are doing that job.
+Even though the oldest group has only 8\% of the data, it reaches a recall of 0.85,
+which suggests that the balanced class weights are doing their job of pushing each
+SVM to find its positive examples.
 
-Leaving out the under 15 group reflects a wider problem. Surveillance datasets
-hold few children, both because few appear in the footage and because privacy
-rules limit how such data is collected. A store that needs to know how many
-children visit should not rely on IFAS for that.
+Leaving out the under-15 group points to a wider problem. Surveillance datasets
+contain few children, partly because few appear in such footage and partly
+because privacy rules limit how this kind of data can be collected. A store that
+needs to know how many children visit should not rely on IFAS for it.
+
+Finally, although our age model follows the recipe of the PETA baseline, its
+numbers cannot be set directly against those of Deng et al.~\cite{deng2014peta}.
+We use our own image-level split of a subset of PETA, we drop one age group, and
+the grid search chose the RBF kernel instead of the intersection kernel. A proper
+comparison would need the original partition and the intersection kernel.
 
 \subsection{Feature Settings and the Released Model}
-The released model and the selected settings differ in two ways, the number of
-regions and the number of LBP points. On validation data the difference in mean
-$\mA$ is 0.002, which is too small to separate the two on a single split. The
-screening study still earns its place. It shows that the model is not fragile.
-Across every setting we tried, average $\mA$ stays between 0.7155 and 0.7493, a
-spread of 3.4 points, and the two settings that cost most are too few body
-regions and too many colour bins.
+The released model and the selected settings differ in the number of regions and
+the number of LBP points. On validation data their mean $\mA$ differs by only
+0.002, which is too small to separate them on a single split. The screening study
+is still useful, because it shows that the model is not fragile. Across all the
+settings we tried, average $\mA$ stays between 0.7155 and 0.7493, a spread of 3.4
+points, and the two choices that hurt most are too few body regions and too many
+colour bins.
 
 \subsection{Why Two Kinds of Model}
-One network that predicts gender and age together would be simpler to deploy. We
-kept the two apart for two reasons. The age model reproduces a published
-baseline, so its numbers can be set directly against those of Deng et
-al.~\cite{deng2014peta}. Its features can also be inspected, since a histogram bin
-is a colour range in a named part of the body. The gender task has enough data to
-train a large network, and the accuracy of the transformer there is hard to match
-with hand-built features.
+A single network predicting both gender and age would be simpler to deploy, but we
+kept the two separate for two reasons. The age model follows a published baseline,
+and its features can be inspected directly, since each histogram bin is a colour
+range in a named part of the body. The gender task, on the other hand, has enough
+data to train a large network, and the accuracy of the transformer on it is hard to
+match with hand-crafted features.
 
-The runtime figures add a third argument. The age model costs less than a
-tenth of the gender network per crop on a processor. A store with no graphics
-card can run age on every crop and spend its budget on gender.
+The runtime measurements give a third reason. Per crop, the age model costs less
+than a tenth of the gender network on a CPU, so a store without a graphics card can
+afford to run age on every crop and spend most of its compute budget on gender.
 
 \subsection{Limitations}
 \label{sec:limits}
-Apart from the field check, the numbers in this paper come from PETA. The field
-check is one clip of 15\,s labelled by eye, so accuracy in a real store is still
-unmeasured. Several other limits follow from the design.
+Apart from the field check, every number in this paper comes from PETA, and the
+field check itself is a single 15\,s clip annotated by eye. Accuracy in a real
+store therefore remains unmeasured. Several other limitations follow from the
+design.
 \begin{itemize}
-  \item The tracker does not re-identify people by appearance. A person who
-        leaves the frame and returns is counted twice, and two people who cross
-        can swap tracks. The rule that rejoins lost tracks is a heuristic and
-        can merge two people who stand in the same spot a few seconds apart.
-  \item A person no detector finds is never counted. In the field check one
-        person of five, hidden behind another, was missed for the whole clip.
-  \item The tracking rules were tuned on a single recording. They need to be
+  \item Our PETA splits are made at the image level, so some people appear on
+        both sides. The reported accuracies are likely to be optimistic for
+        unseen customers, and an identity-disjoint split such as that of Jia et
+        al.~\cite{jia2021rethinking} should be used in future work.
+  \item The gender results are validation accuracies from short single runs, with
+        the best one chosen on the same validation set. The gender model has no
+        held-out test result yet, and Stage~2 has not been evaluated.
+  \item The tracker does not re-identify people by appearance. Someone who leaves
+        the frame and comes back is counted twice, and two people who cross paths
+        can swap tracks. The rejoining rule is a heuristic and can merge two people
+        who stand in the same spot a few seconds apart.
+  \item A person whom no detector finds is never counted. In the field check, one
+        of the five people, hidden behind another, was missed for the entire clip.
+  \item The tracking rules were tuned on a single recording and still need to be
         checked on labelled footage from other stores.
-  \item Occupancy is the number of people in view, not the number in the store.
-  \item Dwell time measures presence in the frame. It stands in for interest and
-        does not measure it.
-  \item The age SVMs were trained at the resolution of PETA images. Small or
-        blurred crops receive labels with low confidence.
-  \item Accuracy per track has not been measured. Pooling helps only when the
-        errors on different frames are independent.
-  \item The gender results are validation accuracy from short single runs. The
-        gender model has no held-out test result yet.
+  \item Occupancy is the number of people in view, not the number in the store,
+        and dwell time measures presence in the frame, which is only a proxy for
+        interest.
+  \item The age SVMs were trained at PETA resolution, so small or blurred crops
+        receive low-confidence labels, and age confidence is not calibrated.
+  \item Per-track accuracy has not been measured. Pooling helps most when the
+        errors on different frames are independent, but crops of one person taken
+        a fraction of a second apart share lighting and pose, so their errors are
+        likely to be correlated.
   \item The runtime figures come from one processor and one recording.
 \end{itemize}
 
@@ -942,24 +1009,27 @@ unmeasured. Several other limits follow from the design.
 \section{Conclusion}
 \label{sec:conclusion}
 
-IFAS turns store footage into a record of who came in, when they came and how
-long they stayed. It does so with a mix of models chosen task by task: a small
-detector for speed, a fine-tuned transformer for gender and an SVM baseline for
-age. On PETA the gender model reaches 97.8\% validation accuracy. The age model
-reaches a mean $\mA$ of 0.835 on the test split, and 95\% of its predictions are
-within one age group of the truth. The sensitivity study shows that linear
-probing before fine-tuning has the largest effect on the gender model and that
-the number of body regions has the largest effect on the age model. The timings
-show that the gender network accounts for most of the cost and that capping the
-votes per person keeps that cost bounded. On a hard clip from outside PETA,
-rejoining lost tracks and checking weak detections with a second detector
-raised the number of people found from three of five to four of five and
-brought the reported dwell times in line with the footage.
+In this paper we presented IFAS, a system that turns store footage into a record of
+who came in, when they came and how long they stayed. It combines models chosen
+task by task: a small detector for speed, a fine-tuned transformer for gender and
+an SVM baseline for age. On PETA the gender model reaches up to 97.8\% validation
+accuracy, and the age model achieves a mean $\mA$ of 0.835 on the test split, with
+95\% of its predictions within one age group of the truth, although both figures
+come from image-level splits and are probably optimistic. The sensitivity study
+shows that linear probing before fine-tuning has the largest effect on the gender
+model, and that the number of body regions matters most for the age model. The
+timings show that the gender network dominates the cost and that capping the votes
+per person keeps that cost bounded. On a difficult clip from outside PETA,
+rejoining lost tracks and checking weak detections with a second detector raised
+the number of people found from three of five to four of five and brought the
+reported dwell times in line with the footage, although the rules were tuned on
+that same clip.
 
-Three pieces of work come next. The first is to label store footage and measure
-accuracy per track on it. The second is to add re-identification so that
-returning visitors are counted once. The third is to run the pipeline on a live
-camera feed, which we have not yet tested.
+We see three directions for future work. The first is to label footage from real
+stores and measure per-track accuracy on it, using identity-disjoint splits for
+any retraining. The second is to add re-identification so that returning visitors
+are counted only once. The third is to run the pipeline on a live camera feed,
+which we have not tested yet.
 
 \section*{Acknowledgment}
 The authors thank Prof. Neha Katre for guidance throughout this project.

@@ -161,3 +161,61 @@ def test_without_a_second_detector_faint_boxes_count_for_nothing(video, tmp_path
     doc = process_video(video, tmp_path / "run6", stride=1, write_video=False, device="cpu",
                         detector=FaintDetector(), gender_model=StubGender(), verifier_weights=None)
     assert doc["kpis"]["visitors"] == 1
+
+
+# --------------------------------------------------- research: crops and pooling
+def test_export_crops_matches_classified_frames(video, tmp_path):
+    """Task A1: one crop per classified frame of every person kept, and the schema of
+    docs/research-plan.md Section 3."""
+    out = tmp_path / "run7"
+    doc = process_video(video, out, stride=1, write_video=False, device="cpu", min_track_frames=3,
+                        detector=StubDetector(), gender_model=StubGender(), age_model=StubAge(),
+                        export_crops=True)
+    lines = [json.loads(l) for l in (out / "crops.jsonl").read_text().splitlines()]
+    assert len(lines) == sum(t["classified_frames"] for t in doc["tracks"]) > 0
+    assert doc["meta"]["crops_exported"] == len(lines)
+    assert {r["track"] for r in lines} == {t["id"] for t in doc["tracks"]}
+    first = lines[0]
+    for key in ("track", "frame", "t", "box", "det_conf", "frame_w", "frame_h", "crop", "flow"):
+        assert key in first
+    assert (first["frame_w"], first["frame_h"]) == (W, H)
+    assert (out / first["crop"]).exists()
+    assert set(first["cues"]) >= {"hf_ratio", "lap_var", "motion", "truncated", "occlusion", "size", "det_conf"}
+    assert first["pred"]["gender"] == {"female": 0.2, "male": 0.8}
+    # The walker moves 4 px a frame, so later crops see motion against a static background.
+    moving = [r for r in lines if r["flow"] is not None]
+    assert moving and max(r["flow"]["box_mag"] - r["flow"]["bg_mag"] for r in moving) > 0.5
+    # Crop images on disk are exactly the ones listed.
+    on_disk = {p.relative_to(out).as_posix() for p in (out / "crops").rglob("*.png")}
+    assert on_disk == {r["crop"] for r in lines}
+
+
+def test_export_crops_off_by_default(video, tmp_path):
+    out = tmp_path / "run8"
+    doc = process_video(video, out, stride=1, write_video=False, device="cpu",
+                        detector=StubDetector(), gender_model=StubGender())
+    assert not (out / "crops.jsonl").exists() and not (out / "crops").exists()
+    assert "crops_exported" not in doc["meta"] and doc["config"]["pooling"] == "majority"
+
+
+class SplitGender:
+    """Two weak votes for female, then confident male ones: majority and mean disagree."""
+
+    def __init__(self):
+        self.n = 0
+
+    def predict(self, crops):
+        out = []
+        for _ in crops:
+            self.n += 1
+            out.append({"female": 0.55, "male": 0.45} if self.n % 3 else {"female": 0.02, "male": 0.98})
+        return out
+
+
+def test_pooling_option_changes_the_label(video, tmp_path):
+    common = dict(stride=1, write_video=False, device="cpu", detector=StubDetector())
+    by_vote = process_video(video, tmp_path / "a", gender_model=SplitGender(), **common)
+    by_mean = process_video(video, tmp_path / "b", gender_model=SplitGender(), pooling="mean", **common)
+    assert by_vote["tracks"][0]["gender"] == "female"
+    assert by_mean["tracks"][0]["gender"] == "male"
+    assert by_mean["config"]["pooling"] == "mean"

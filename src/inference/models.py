@@ -118,6 +118,17 @@ class GenderModel:
                 out.append({self.id2label[j]: float(p) for j, p in enumerate(row)})
         return out
 
+    def embed(self, crops):
+        """crops: list[PIL.Image] -> (n, hidden) array: the pooled ViT feature the
+        classification head reads. Research use (the RQ3 attention baseline)."""
+        out = []
+        for i in range(0, len(crops), self.batch_size):
+            chunk = crops[i:i + self.batch_size]
+            pv = self.processor(images=chunk, return_tensors="pt")["pixel_values"].to(self.device)
+            with self._torch.no_grad():
+                out.append(self.model.vit(pixel_values=pv).pooler_output.cpu().numpy())
+        return np.vstack(out) if out else np.zeros((0, self.model.head.in_features), np.float32)
+
 
 # --------------------------------------------------------------------------
 # Age: region histograms + per-attribute SVMs
@@ -272,3 +283,56 @@ class AgeModel:
             probs = _softmax(scores)
             out.append({l: p for l, p in zip(self.labels, probs)})
         return out
+
+    def embed(self, crops):
+        """crops: list[PIL.Image] -> (n, d) array of the colour and texture
+        histograms the SVMs score, computed with the bundle's own settings."""
+        if not crops:
+            return np.zeros((0, 0), np.float32)
+        return np.vstack([extract_features(c, **self.feature_kw) for c in crops])
+
+
+# --------------------------------------------------------------------------
+# Loading, shared by the pipeline and the research scripts
+# --------------------------------------------------------------------------
+DEFAULT_CACHE = Path(__file__).resolve().parents[2] / "models" / "hf"
+
+
+def load_gender_model(repo=None, ckpt=None, cache_dir=None, device="cpu", say=None):
+    """A GenderModel from a Hub repo id (cached) or a local checkpoint directory.
+
+    The Hub checkpoint is about 340 MB, so it lives in a shared cache and is
+    downloaded once, not once per run. Returns None when neither is given.
+    """
+    cache = Path(cache_dir) if cache_dir else DEFAULT_CACHE
+    if repo:
+        local = cache / repo.replace("/", "__")
+        if (local / "pytorch_model.bin").exists() and (local / "config.json").exists():
+            model = GenderModel(local, device=device)        # cached: no network needed
+            model.source = repo
+            return model
+        if say:
+            say(stage="downloading checkpoint", pct=0.0)
+        return GenderModel.from_hub(repo, local, device=device)
+    if ckpt:
+        model = GenderModel(ckpt, device=device)
+        model.source = str(ckpt)
+        return model
+    return None
+
+
+def load_age_model(bundle=None, cache_dir=None, say=None):
+    """An AgeModel from a local bundle (file or directory) or a Hub repo id."""
+    if not bundle:
+        return None
+    if Path(bundle).exists():
+        return AgeModel(bundle)
+    cache = Path(cache_dir) if cache_dir else DEFAULT_CACHE
+    local = cache / str(bundle).replace("/", "__")       # not a path, so a Hub repo id
+    if (local / AgeModel.HUB_FILE).exists():
+        model = AgeModel(local / AgeModel.HUB_FILE)
+        model.source = bundle
+        return model
+    if say:
+        say(stage="downloading age model", pct=0.0)
+    return AgeModel.from_hub(bundle, local)

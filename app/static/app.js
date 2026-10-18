@@ -85,6 +85,7 @@ function renderRunList() {
         <span class="r-meta">${plural(r.visitors, 'person', 'people')} in ${fmt.dur(r.duration_sec)}</span>
       </span>
       ${r.demo ? '<span class="badge">Sample</span>' : ''}
+      ${r.has_crops ? `<span class="badge" title="Crops saved for labelling">${r.annotators?.length ? 'Labelled' : 'To label'}</span>` : ''}
     </button>`).join('');
   $$('button', host).forEach((b) => {
     b.onclick = () => {
@@ -129,6 +130,9 @@ async function loadRun(id) {
   $$('#run-list button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.run === id)));
   $('#run-badge').hidden = !doc.meta.demo;
   $('#run-badge-text').textContent = 'Sample data, no models were run';
+  const label = $('#btn-label');
+  label.hidden = !run?.has_crops;
+  label.href = `label.html?run=${encodeURIComponent(id)}`;
   const hasFrame = !!(run?.has_poster || run?.has_video);
   $('#sw-frame').hidden = !(floor && hasFrame);
   if (!hasFrame) { $('#chk-frame').checked = false; floor?.setLayers({ frame: false }); }

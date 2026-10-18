@@ -72,6 +72,8 @@ def main():
     p.add_argument("--device", default="auto")
     p.add_argument("--no-video", action="store_true",
                    help="skip the annotated MP4 - much faster for bulk history")
+    p.add_argument("--export-crops", action="store_true",
+                   help="also save every classified crop, for labelling (docs/research-plan.md)")
     p.add_argument("--limit", type=int, default=None, help="process at most N videos")
     p.add_argument("--dry-run", action="store_true", help="list what would be processed")
     a = p.parse_args()
@@ -118,6 +120,7 @@ def main():
                 age_bundle=a.age_bundle, det_conf=a.det_conf, stride=a.stride,
                 device=a.device, write_video=not a.no_video, captured_at=when,
                 site=a.site, camera=a.camera, source_name=video.name,
+                export_crops=a.export_crops,
                 progress=lambda **kw: print(f"    {kw.get('stage')}: {kw.get('pct')}%", end="\r"),
             )
             k = doc["kpis"]

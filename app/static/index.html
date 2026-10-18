@@ -70,6 +70,10 @@
     <div class="seg" role="group" aria-label="How much detail to show">
       <button id="btn-simple" aria-pressed="true">Simple</button><button id="btn-full" aria-pressed="false">Detailed</button>
     </div>
+    <a id="btn-label" class="bar-link" href="label.html" hidden title="Label the people in this recording, for the research study">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8.6V3.4a.9.9 0 0 1 .9-.9h5.2l5 5a1 1 0 0 1 0 1.4l-3.8 3.8a1 1 0 0 1-1.4 0z"/><circle cx="5.6" cy="5.6" r="1"/></svg>
+      <span>Label</span>
+    </a>
     <button id="btn-theme" class="icon" title="Switch between light and dark" aria-label="Switch between light and dark">
       <svg class="i-sun" width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 1.6v1.7M9 14.7v1.7M16.4 9h-1.7M3.3 9H1.6M14.2 14.2 13 13M5 5 3.8 3.8M14.2 3.8 13 5M5 13l-1.2 1.2"/></svg>
       <svg class="i-moon" width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 10.6A6.6 6.6 0 0 1 7.4 2.8a6.6 6.6 0 1 0 7.8 7.8z"/></svg>
@@ -502,6 +506,7 @@
         <option value="none">Fast: count only people the detector is sure about</option>
       </select>
     </label>
+    <label class="switch"><input type="checkbox" name="export_crops" value="true"> Save person crops for labelling (research study)</label>
     <div class="grid g-2 mini">
       <label>Frame stride<input type="number" name="stride" value="2" min="1" max="30"></label>
       <label>Detection confidence<input type="number" name="det_conf" value="0.4" min="0.05" max="0.95" step="0.05"></label>

@@ -1,8 +1,9 @@
 # Research plan: from product to paper
 
-This is the plan for turning IFAS from a system description into a research paper. Nothing in
-it is implemented yet. The work is split evenly between two people, **Person A** and
-**Person B**, with a few shared tasks. Fill in the names below before starting.
+This is the plan for turning IFAS from a system description into a research paper. All the code
+it calls for is now written and tested; what is left needs people, footage or a GPU. Section 8
+says which is which and how to run each step. The work is split evenly between two people,
+**Person A** and **Person B**, with a few shared tasks. Fill in the names below before starting.
 
 | Role | Owns | Name |
 | :--- | :--- | :--- |
@@ -29,6 +30,13 @@ the inference loader silently skipped the fine-tuned ViT encoder, so every gende
 from `src/inference/` ran on ImageNet weights. That includes the field check in Section IV-G.
 Training-time validation numbers (from the notebooks) are not affected. All pipeline-based
 gender results must be re-run.
+
+**B1 re-ran the field check of Section IV-G with the strict
+loader and got identical results for every person** (`paper/results/b1_rebaseline.json`): the
+machine that produced it has transformers 5.13.0, which uses the checkpoint's own weight names,
+so the old load was complete there. Under other versions it was not: on the 97 s retail clip the
+fix changed 15 of 46 people (`paper/results/b1_gender_rebaseline.json`). That is why the version
+is now pinned, to 5.6.2, which both gender checkpoints load under strictly. Section IV-G stands.
 
 Target: an **IEEE conference paper, at most 8 pages**.
 
@@ -112,9 +120,17 @@ Agree on these formats first. Then A and B can work in parallel against fake dat
 
 ```json
 {"track": 12, "frame": 431, "t": 32.9, "box": [412, 88, 501, 330], "det_conf": 0.71,
- "frame_w": 1270, "frame_h": 720, "crop": "crops/12/000431.jpg",
- "flow": {"box_mag": 1.8, "bg_mag": 0.3}}
+ "frame_w": 1270, "frame_h": 720, "crop": "crops/12/000431.png",
+ "flow": {"box_mag": 1.8, "bg_mag": 0.3}, "overlap": 0.12,
+ "cues": {"hf_ratio": 0.031, "lap_var": 0.0042, "motion": 1.5, "truncated": 0.0,
+          "occlusion": 0.12, "size": 0.023, "det_conf": 0.71},
+ "pred": {"gender": {"female": 0.82, "male": 0.18}, "age": {"Age16-30": 0.4, "...": 0.6}}}
 ```
+
+`flow` is null for a crop with no previous frame. `overlap` is the largest IoU with another
+person's box in that frame. `cues` are the A4 quality cues, measured at export time, and `pred`
+holds the product's own per-crop probabilities, so RQ3 can run on the product's output without
+re-running the models. The labelling page never shows `pred`.
 
 **`labels_<annotator>.json`** (written by the labelling page, one file per annotator so
 agreement can be measured)
@@ -131,8 +147,12 @@ agreement can be measured)
 
 ```json
 {"domain": "retail", "condition": "fda", "model": "gender-fda-seed1", "item": "store-cam1/12/000431",
- "track": 12, "frame": 431, "probs": {"female": 0.82, "male": 0.18}, "label": "female"}
+ "track": 12, "frame": 431, "probs": {"female": 0.82, "male": 0.18}, "label": "female",
+ "task": "gender", "group": "store-cam1/12", "truth": "female", "hf_ratio": 0.031}
 ```
+
+`group` is the person (the unit confidence intervals resample), `truth` the label (null when
+unsure), and `hf_ratio` the crop's high-frequency energy ratio.
 
 **Results** (`paper/results/rq1_gap.json`, `rq2_adaptation.json`, `rq3_pooling.json`): each
 file holds `{"meta": {"commit", "date", "models", "seeds"}, "rows": [...]}`.
@@ -217,3 +237,67 @@ Two reviewer-facing risks to address in the paper:
 2. **"One store is not a benchmark."** Use public data for scale and statistics (MARS, and RAP
    if access is granted) and the retail clips for realism. Report confidence intervals
    throughout (B7).
+
+## 8. Status (2026-10-19)
+
+Everything that can be done without new footage, labels or a GPU is done and covered by tests
+(`pytest`: `tests/test_research_gap.py`, `tests/test_research_pooling.py`,
+`tests/test_label_api.py`, and the crop-export and pooling cases in `tests/test_pipeline_e2e.py`).
+
+| ID | State | Where, and how to run it |
+| :- | :--- | :--- |
+| S1 | Done | Section 3 formats, implemented as written (plus the extra fields noted there) |
+| A1 | Done | `process_video(export_crops=True)`, `--export-crops` in the pipeline CLI and `scripts/process_folder.py`, and a switch in the dashboard's upload dialog. Checked on the shop clip: crops = summed `classified_frames`. Crops are now lossless PNG: re-read JPEG crops moved age probabilities by up to 0.06 from what the product scored, so research numbers would not have matched the product's |
+| A2 | Done | `app/static/label.html`, `label.js`, `label.css`; `GET /api/runs/{id}/crops`, `GET /api/runs/{id}/labels/{annotator}`, `POST /api/runs/{id}/labels`. The dashboard shows a **Label** button for runs with crops. Headless-Chrome test in `tests/test_label_api.py` |
+| A3 | Tools done, **needs people** | Recording needs the stores. Everything around it is ready: the permission letter (`docs/research-permission.md`), the step-by-step under Retail clips in `docs/research-data.md`, `scripts/research/check_data.py` (fails if a test clip is also stage-2 or FDA footage, even cut or re-encoded, or has no permission row), and `scripts/research/fda_frames.py` (the FDA hand-off to B, with a manifest) |
+| A4 | Done | `src/research/quality.py` |
+| A5 | Code done, **needs labels** | `src/research/pooling.py`, `scripts/research/pooling_eval.py --runs ...`. The learned temporal-attention baseline is in: `src/research/attention.py` over frozen per-frame features from `scripts/research/extract_features.py` (`GenderModel.embed`, `AgeModel.embed`), trained on the quality model's person folds or on MARS (`--attention-train`). Results also give the Spearman agreement between attention and quality weights, and how many people fell back to the mean. Dry run on real crops passed (Section 8.1) |
+| A6 | Done, default unchanged | `process_video(pooling=..., quality_model=...)`, `--pooling`, `--quality-model`. Majority vote stays the default until A5 shows a significant gain |
+| A7 | Done | tests above, plus the attention baseline, `fda_frames.py`, the FDA loader and `check_data.py` in `tests/test_research_pooling.py` |
+| B1 | Done | `transformers==5.6.2` pinned in `requirements.txt`, `test_model.ipynb` and both training notebooks. Field check re-run: identical (`paper/results/b1_rebaseline.json`); 97 s clip before and after: `paper/results/b1_gender_rebaseline.json` |
+| B2 | Code done, **needs the MARS images** | `src/research/mars.py` and `scripts/research/get_mars.py labels / index / sheet` write `data/mars/tracklets.jsonl`. The images come from the MARS authors by hand. Confirm the gender code with the contact sheet before reporting. `read_mars_index` in `src/research/data.py` feeds `eval_frames.py` and `extract_features.py` |
+| B3 | Done | `src/research/degrade.py` (`SUITE`, `apply`, `iter_suite`); `eval_frames.py --domain peta-degraded` runs every cell |
+| B4 | Code done, **needs a GPU for the full sweep** | `src/research/spectrum.py` (the radial spectrum and `high_freq_ratio`, plus `hf_ratio` and `mean_log_spectrum` measured at the model's input size), `scripts/research/eval_frames.py --domain peta / peta-degraded / retail / mars` |
+| B5 | Done | `RandomDegrade`, `FourierStyle` and `build_transforms(condition=...)` in `src/training/transforms.py`, with `target_frames` to pick FDA frames evenly from a folder |
+| B6 | Code done, **needs a GPU** | `src/research/rq2.py` and `research_rq2_training.ipynb` (the four conditions without store labels, held-out PETA test, every degradation, per-seed McNemar); the age degraded-feature cells at the end of `age_classifier_v3.ipynb`. Stage 2 (conditions 4 and 5) waits for labelled store crops |
+| B7 | Done | `src/research/stats.py`, with `ci`, `grouped_bootstrap_ci`, `accuracy`, `one_vs_rest_mA`, `ordinal_metrics` and `auc` added below the existing functions for the RQ1 and RQ3 scripts. Tests: `tests/test_research_stats.py` |
+| B8 | Done | tests above, with `tests/test_research_degrade.py`, `test_research_spectrum.py` and `test_research_mars.py` |
+| S2 | **Needs people** | Label in the labelling page; `scripts/research/agreement.py` for kappa; save agreed labels as `labels_final.json` |
+| S3 | A's part drafted, **needs results** | `paper/sections/system.tex`, `rq3.tex`, `ethics.tex`, `limitations.tex`, built on their own by `paper/draft_personA.tex`. Every RQ3 number is a `\rqthree{task}{key}` macro that `make_figures.py` writes to `figures/rq3_numbers.tex` from `rq3_pooling.json`; missing numbers print as **??**, and the sentences that depend on the outcome are marked TODO. B's part and the joint parts wait for RQ1 and RQ2 results |
+| S4 | Partly | Field check re-run (B1). Gender test result, stage 2 and seeds come with B6 |
+
+Two additions beyond the original task list:
+
+* `scripts/research/make_peta_split.py` builds an identity-disjoint PETA split, because the paper's
+  numbers come from image-level splits that put the same people in training and test. It
+  produced the overlap measurements in `docs/research-data.md` and the CUHK results; the RQ2 runs
+  use `src/research/peta.py`'s identity split.
+* `scripts/research/agreement.py` computes the kappa S2 asks for.
+* Building the split exposed a data bug: until now, `train_stage1.ipynb`'s loader kept only PETA's
+  CUHK subset (4,563 of 19,000 images), and the age notebook's kept everything except CUHK. The
+  RQ2 runs do not depend on that cell. The published Stage 1 checkpoint scores 100% on the nine non-CUHK
+  subsets and 92% on CUHK, so it was trained without CUHK (`paper/README.md`, item 0). CUHK is
+  therefore held out for both released models, and RQ1's PETA numbers for them come from CUHK.
+  B6 trains on the identity split from `src/research/peta.py`, not on an old `labels.csv`.
+
+### 8.1 Person A, end to end
+
+Everything Person A owns now runs from a clip to the paper's PDF. A dry run on a copy of the
+field-check run (`fieldcheck-crops`: 4 people, 44 crops) went through every step: plumbing labels
+(one non-human annotator on web footage without store permission, so not a result and not kept),
+`extract_features.py` with the real models (768 values per crop for gender, 550 for age),
+`pooling_eval.py`, the RQ3 figure, `rq3_numbers.tex` and the draft PDF with those numbers filled
+in. With one class and every crop right, neither the quality model nor the attention head had
+anything to learn, and the results say so (`fallback_to_mean`, `attention.skipped`). The attention
+head was also trained on the real features of those crops to check it at full size.
+
+What Person A still has to do, in order:
+
+1. Get the permission letters signed and record the clips (A3).
+2. Run `check_data.py`, process the test clips with `--export-crops`, and hand the FDA frames to B.
+3. Label with Person B (S2), then `extract_features.py` and `pooling_eval.py` (A5).
+4. `python paper/figures/make_figures.py`, read the numbers, and write the TODO sentences in
+   `paper/sections/rq3.tex`. Change the product's default pooling only if A5 shows a significant
+   gain (A6).
+
+The order of work in Section 5 still holds. The first real step is A3: recording.
