@@ -54,8 +54,11 @@ class GenderClassifier(nn.Module):
     @classmethod
     def load(cls, ckpt_dir, device="cpu"):
         with open(Path(ckpt_dir) / "config.json") as f: cfg = json.load(f)
+        from src.inference.models import _match_vit_keys
         m = cls(cfg["vit_model_name"], cfg.get("num_labels", 2))
         state = torch.load(Path(ckpt_dir) / "pytorch_model.bin", map_location=device)
-        m.load_state_dict(state, strict=False)
+        # Strict, after renaming keys to this transformers version's spelling: a
+        # non-strict load silently skips every encoder layer when the names differ.
+        m.load_state_dict(_match_vit_keys(state, m.state_dict()))
         m.to(device).eval()
         return m

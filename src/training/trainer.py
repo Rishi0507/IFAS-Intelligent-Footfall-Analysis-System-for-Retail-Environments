@@ -63,12 +63,15 @@ def train_phase(model, train_loader, val_loader, device, phase_name,
             imgs, labs = imgs.to(device), labs.to(device)
             opt.zero_grad(set_to_none=True)
             with torch.amp.autocast("cuda", enabled=(fp16 and device=="cuda")):
-                loss = nn.functional.cross_entropy(model(imgs), labs)
+                logits = model(imgs)
+                loss = nn.functional.cross_entropy(logits, labs)
             scaler.scale(loss).backward(); scaler.unscale_(opt)
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             scaler.step(opt); scaler.update(); sched.step(); step += 1
             rloss += loss.item()*imgs.size(0)
-            rcorr += int((model(imgs).argmax(-1)==labs).sum()); rtot += imgs.size(0)
+            # Running accuracy from this step's logits: a second forward pass here
+            # used to cost about a third of the training time.
+            rcorr += int((logits.detach().argmax(-1)==labs).sum()); rtot += imgs.size(0)
             if step % log_every == 0:
                 eta = (time.time()-t0)/step*(total-step)
                 print(f"  [{phase_name}] ep{ep+1}/{epochs} step {step}/{total} "
