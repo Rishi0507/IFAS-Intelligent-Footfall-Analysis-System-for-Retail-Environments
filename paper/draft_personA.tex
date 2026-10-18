@@ -1,0 +1,57 @@
+% Person A's sections of the research rewrite (task S3), built on their own so
+% they can be read and checked before the joint 8-page paper exists.
+%
+% Build:   tectonic draft_personA.tex
+% Numbers: python figures/make_figures.py   (writes figures/rq3_numbers.tex and
+%          figures/rq3_pooling.pdf once results/rq3_pooling.json exists; until
+%          then every RQ3 number prints as ??)
+%
+% The preamble is a copy of ifas.tex's, so the sections drop into the joint
+% paper unchanged.
+\documentclass[conference]{IEEEtran}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,chains,positioning,decorations.pathreplacing,calc}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{figures/}}
+
+\definecolor{ink}{HTML}{1B1F3B}
+\definecolor{cool}{HTML}{2A6FDC}
+\definecolor{warm}{HTML}{E0602A}
+
+\tikzset{
+  >=Stealth,
+  box/.style={draw=ink!65, line width=0.5pt, rounded corners=2.5pt, fill=white,
+    align=center, inner xsep=4.5pt, inner ysep=4pt, minimum height=10mm,
+    font=\footnotesize, text=ink},
+  deep/.style={box, draw=cool!85, fill=cool!9},
+  classic/.style={box, draw=warm!90, fill=warm!11},
+  flow/.style={->, line width=0.55pt, draw=ink!75},
+  note/.style={font=\scriptsize, text=ink!80},
+}
+
+\begin{document}
+
+\title{Person A's sections: System, RQ3, Ethics and Limitations\\(draft for the research rewrite)}
+\author{\IEEEauthorblockN{IFAS team}}
+\maketitle
+
+\input{sections/system}
+\input{sections/rq3}
+\input{sections/ethics}
+\input{sections/limitations}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

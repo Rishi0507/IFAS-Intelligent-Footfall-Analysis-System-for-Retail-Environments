@@ -1,0 +1,37 @@
+% Ethics (task S3, Person A). Keep this section in the 8-page version: a paper
+% that films shoppers and guesses their gender and age has to say this.
+% Every sentence here is a claim about how the clips were collected. Before
+% submitting, check each one against docs/research-data.md and the signed
+% letters, and change or cut any that did not hold.
+
+\section{Ethics}
+\label{sec:ethics}
+The retail clips are CCTV recordings of members of the public, and the study
+estimates attributes of those people. We set the following rules before
+recording anything, and kept to them.
+
+\emph{Permission.} Every clip comes from a store that gave written permission
+for this study. The letter says what footage is used, what is done with it, how
+long it is kept and that the store can withdraw at any time. The footage comes
+from the store's existing cameras, which are signposted. We installed no camera
+and recorded nothing new.
+
+\emph{Privacy.} Footage, crops and labels stay on the project's own machines and
+are never published or shared. No figure in this paper shows a recognisable
+person. We do not identify anyone, and the system stores no face template or
+any other means to find a person again in other footage. Results are reported
+as totals over people.
+
+\emph{Labels.} The annotators recorded apparent gender and an apparent age group
+from the crops. These are judgements about appearance and say nothing about how
+a person identifies. Gender is recorded as two classes because PETA and MARS
+label it that way. This is a limitation of the data, and a deployment should
+report it as an estimate of appearance. Children are not labelled: the age
+model's youngest group starts at 16, PETA's under-15 group is left out of its
+training, and no person who looked under 16 in the retail clips was labelled.
+
+\emph{Use.} The system counts and describes groups of shoppers so a store can
+plan staffing and layout. It is not meant to treat individual customers
+differently, and should not be used that way. Gender and age estimates are
+wrong for a measurable share of people, which Section~\ref{sec:rq3} reports.
+They are not fit for any decision about an individual.

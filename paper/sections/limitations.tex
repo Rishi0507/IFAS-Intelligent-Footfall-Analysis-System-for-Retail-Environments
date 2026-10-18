@@ -1,0 +1,32 @@
+% Limitations (task S3, Person A). Items about RQ1 and RQ2 belong to Person B
+% and go in the marked place before this goes into the paper.
+
+\section{Limitations}
+\label{sec:limits}
+\begin{itemize}
+  \item \emph{Few stores.} The retail clips come from a small number of cameras
+        in a small number of stores. The intervals in Section~\ref{sec:rq3} cover
+        the variation between people, not between stores, and a store with
+        different lighting or camera placement may behave differently.
+  \item \emph{Labels are judgements.} The ground truth is what two annotators
+        saw in the crops. People they marked unsure are left out, which removes
+        the hardest cases from every accuracy we report.
+  \item \emph{Correlated frames.} Crops of one person taken 0.4\,s apart share
+        lighting, pose and clothing, so their errors are not independent. Pooling
+        cannot fix an error that every frame makes, and accuracy against the
+        number of frames pooled shows how much independent evidence the frames
+        really hold.
+  \item \emph{Hand-chosen cues.} The quality model sees seven cues that we chose.
+        A failure that none of them measures, such as a bag held in front of the
+        body or strong backlight, gets no lower weight.
+  % If the MARS images are obtained and used (--attention-train), rewrite this item.
+  \item \emph{Small training sets.} With MARS unavailable, the quality model and
+        the attention head were fitted on the retail people themselves, with
+        cross-validation. Both would likely improve with more data, and the
+        attention head, with far more parameters, more so.
+  \item \emph{The tracker.} Pooling is only as good as the track it pools. The
+        tracker has no appearance model, so two people who cross paths can swap
+        tracks, and a pooled label can then mix two people.
+  % Person B: add the RQ1 and RQ2 limitations here (PETA split, single store as
+  % FDA target, seeds).
+\end{itemize}
