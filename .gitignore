@@ -30,3 +30,10 @@ data/
 # Footage and checkpoints (docs/research-data.md: footage and labels stay out of git)
 checkpoints/
 footage/
+# Recordings dropped into the working tree: CCTV footage never goes into git,
+# wherever it lands
+*.avi
+*.mp4
+*.mkv
+*.mov
+*.dav
