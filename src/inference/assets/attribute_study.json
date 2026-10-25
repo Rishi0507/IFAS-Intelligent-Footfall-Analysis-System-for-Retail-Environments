@@ -1,0 +1,24 @@
+{
+ "commit": "2eaf892",
+ "date": "2026-10-25T17:11:20",
+ "gender": {
+  "ensemble": {
+   "balanced_accuracy": 0.8879,
+   "on": "PETA CUHK test identities"
+  },
+  "clip": {
+   "balanced_accuracy": 0.7652,
+   "on": "PETA CUHK test identities"
+  },
+  "vit": {
+   "balanced_accuracy": 0.8748,
+   "on": "PETA CUHK test identities"
+  }
+ },
+ "age": {
+  "clip": {
+   "balanced_accuracy": 0.3607,
+   "on": "PETA test identities, 4 groups"
+  }
+ }
+}

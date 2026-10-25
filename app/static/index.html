@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IFAS Footfall Analytics</title>
+<title>IFAS Research Workbench</title>
 <link rel="preload" href="fonts/inter-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%2315172e'/><path d='M9 22v-6M16 22V10M23 22v-9' stroke='%23ff9a62' stroke-width='3.2' stroke-linecap='round'/></svg>">
@@ -43,6 +43,14 @@
     <button role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true">
       <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.6"/></svg>
       <span>Overview</span>
+    </button>
+    <button role="tab" id="tab-guide" data-view="guide" aria-controls="view-guide" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5a4.6 4.6 0 0 0-2.7 8.3c.5.4.8 1 .8 1.6v.4h3.8v-.4c0-.6.3-1.2.8-1.6A4.6 4.6 0 0 0 9 2.5z"/><path d="M7.2 15.3h3.6"/></svg>
+      <span>Guide</span>
+    </button>
+    <button role="tab" id="tab-zones" data-view="zones" aria-controls="view-zones" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2.2" y="2.6" width="6" height="5.2" rx="1.4"/><rect x="9.8" y="2.6" width="6" height="5.2" rx="1.4"/><rect x="2.2" y="10.2" width="6" height="5.2" rx="1.4"/><circle cx="12.8" cy="12.8" r="2.6"/></svg>
+      <span>Zones</span>
     </button>
     <button role="tab" id="tab-floor" data-view="floor" aria-controls="view-floor" aria-selected="false" tabindex="-1">
       <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.6 16 6.4 9 10.2 2 6.4z"/><path d="m2 10 7 3.8 7-3.8"/></svg>
@@ -129,6 +137,7 @@
             </div>
             <label class="switch"><input type="checkbox" id="chk-heat" checked><span>Heat</span></label>
             <label class="switch"><input type="checkbox" id="chk-paths" checked><span>Paths</span></label>
+            <label class="switch" id="sw-zones" hidden><input type="checkbox" id="chk-zones" checked><span>Zones</span></label>
             <label class="switch" id="sw-frame" hidden><input type="checkbox" id="chk-frame"><span>Camera frame</span></label>
           </div>
 
@@ -153,7 +162,7 @@
         <h1 id="headline">Loading the recording</h1>
         <p class="hero-meta"><span id="ov-sub"></span><span class="badge demo" id="run-badge" hidden><i class="dot"></i><span id="run-badge-text">Sample data</span></span></p>
         <ul id="summary" class="summary"></ul>
-        <button class="link" id="open-floor">Explore the floor</button>
+        <div class="hero-links"><button class="link" id="open-guide">What this means for you</button><button class="link" id="open-floor">Explore the floor</button></div>
       </div>
     </div>
 
@@ -218,6 +227,184 @@
           <button class="toggle-table" data-table="c-occupancy">Table</button></header>
         <p class="sub" id="occ-sub">How many people were in view at the same time.</p>
         <div id="c-occupancy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= guide -->
+  <section class="view" id="view-guide" role="tabpanel" aria-labelledby="tab-guide" tabindex="0" hidden>
+    <div class="sec-head">
+      <h2>Your recording, in plain words</h2>
+      <p>What happened, what it means for the place, what to try, and how far each number can be trusted.</p>
+    </div>
+    <div id="guide-root"></div>
+  </section>
+
+  <!-- ============================================================= zones -->
+  <section class="view" id="view-zones" role="tabpanel" aria-labelledby="tab-zones" tabindex="0" hidden>
+    <div class="sec-head">
+      <h2>Zones</h2>
+      <p>Tables, seats and queues drawn on the camera frame: which are taken, for how long, and which is likely to free up next.</p>
+    </div>
+
+    <div class="grid g-21 zone-hero">
+      <div class="card zcam-card">
+        <header>
+          <h3>Camera</h3>
+          <span class="badge live" id="zcam-live"><i class="dot"></i><span id="zcam-clock">0:00</span></span>
+          <div class="spacer"></div>
+          <label class="switch zones-body"><input type="checkbox" id="zopt-timers" checked><span>Timers</span></label>
+          <label class="switch zones-body" data-adv><input type="checkbox" id="zopt-names"><span>Names</span></label>
+          <button id="zones-edit" class="quiet" hidden>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 2.6l2.8 2.8-7.9 7.9H2.7v-2.8z"/></svg>
+            Edit zones</button>
+        </header>
+        <div class="zcam" id="zcam">
+          <video id="zcam-video" muted playsinline preload="metadata"></video>
+          <img id="zcam-still" alt="" hidden>
+          <canvas id="zcam-overlay" aria-label="Zones on the camera frame, green when free and red when taken"></canvas>
+          <div class="zones-empty" id="zones-empty" hidden>
+            <p id="zones-empty-text"></p>
+            <div class="row">
+              <button class="primary" id="zones-empty-auto" hidden>Find seats automatically</button>
+              <button id="zones-empty-draw" hidden>Draw zones</button>
+            </div>
+          </div>
+        </div>
+        <div class="zcam-bar" id="zcam-bar">
+          <button class="icon play" id="zcam-play" aria-label="Play or pause">
+            <svg class="i-play" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.4 1.9v10.2a.6.6 0 0 0 .9.5l8.3-5.1a.6.6 0 0 0 0-1L4.3 1.4a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg>
+            <svg class="i-pause" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2.6" y="1.8" width="3.2" height="10.4" rx="1" fill="currentColor"/><rect x="8.2" y="1.8" width="3.2" height="10.4" rx="1" fill="currentColor"/></svg>
+          </button>
+          <input type="range" id="zcam-scrub" min="0" max="1000" value="0" step="1" aria-label="Time in the recording">
+          <span class="clock" id="zcam-time">0:00</span>
+        </div>
+        <div class="zedit-bar" id="zedit-bar" hidden>
+          <div class="zedit-row">
+            <span class="seg" id="zedit-mode" role="group" aria-label="Tool">
+              <button data-mode="select" aria-pressed="true">Select</button><button data-mode="rect" aria-pressed="false">Box</button><button data-mode="poly" aria-pressed="false">Polygon</button>
+            </span>
+            <label class="zfield">Kind
+              <select id="zedit-kind"><option value="table">Table</option><option value="seat">Seat</option><option value="queue">Queue</option><option value="area">Area</option></select>
+            </label>
+            <span id="zedit-sel" class="zedit-sel" hidden>
+              <label class="zfield">Id<input type="text" id="zedit-id" maxlength="24" size="5"></label>
+              <label class="zfield">Name<input type="text" id="zedit-name" maxlength="48" size="12"></label>
+              <button class="quiet" id="zedit-del">Delete</button>
+            </span>
+            <div class="spacer"></div>
+            <span class="muted" id="zedit-count"></span>
+          </div>
+          <div class="zedit-row">
+            <button id="zedit-auto">Find seats</button>
+            <label class="zfield" title="How long someone must sit still for a place to count as a seat">after
+              <input type="number" id="zedit-stay" value="20" min="3" max="600" step="1"> s still</label>
+            <button class="quiet" id="zedit-undo" disabled>Undo</button>
+            <button class="quiet" id="zedit-clear">Clear all</button>
+            <div class="spacer"></div>
+            <label class="switch"><input type="checkbox" id="zedit-camera" checked><span>Reuse for this camera</span></label>
+            <button class="quiet" id="zedit-cancel">Cancel</button>
+            <button class="primary" id="zedit-save">Save and measure</button>
+          </div>
+          <p class="sub" id="zedit-hint"></p>
+        </div>
+      </div>
+      <div class="card zboard zones-body">
+        <header><h3 id="zboard-title">Zones</h3><div class="spacer"></div><span class="zcount" id="zboard-count"></span></header>
+        <p class="sub">At the playhead. Each strip shows when that zone was taken; click one to follow it.</p>
+        <div class="zboard-list" id="zboard-list"></div>
+      </div>
+    </div>
+
+    <div class="grid g-4 tiles zones-body">
+      <div class="card tile">
+        <div class="label">Free now</div>
+        <div class="value" id="zk-free">0</div>
+        <div class="note" id="zk-free-note"></div>
+        <div class="spark" id="zk-free-spark"></div>
+      </div>
+      <div class="card tile">
+        <div class="label">Time taken</div>
+        <div class="value" id="zk-util">0</div>
+        <div class="note" id="zk-util-note"></div>
+        <div class="spark" id="zk-util-spark"></div>
+      </div>
+      <div class="card tile">
+        <div class="label">Stays</div>
+        <div class="value" id="zk-sess">0</div>
+        <div class="note" id="zk-sess-note"></div>
+      </div>
+      <div class="card tile">
+        <div class="label">Detection flicker</div>
+        <div class="value" id="zk-flick">0</div>
+        <div class="note" id="zk-flick-note"></div>
+      </div>
+    </div>
+
+    <div class="grid g-21 zones-body">
+      <div class="card">
+        <header><h3>Who held which zone, when</h3></header>
+        <p class="sub">One row per zone, one bar per stay. Faded bars ran past the start or end of the recording, so they lasted at least that long. Click a bar to jump there.</p>
+        <div class="zgantt-wrap"><div id="c-zgantt"></div></div>
+      </div>
+      <div class="stack">
+        <div class="card znext-card">
+          <header><h3>Next to free up</h3></header>
+          <div id="znext"></div>
+        </div>
+        <div class="card" id="zqueue-card" hidden>
+          <header><h3>Waiting queue</h3></header>
+          <div id="zqueue"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g-3 zones-body">
+      <div class="card">
+        <header><h3>Share of time taken</h3></header>
+        <p class="sub">Each zone, busiest first.</p>
+        <div class="zutil-wrap"><div id="c-zutil"></div></div>
+      </div>
+      <div class="card">
+        <header><h3>How long stays last</h3></header>
+        <p class="sub" id="zsurv-note">Share of stays still going after a given time (Kaplan–Meier).</p>
+        <div id="c-zsurv"></div>
+      </div>
+      <div class="card">
+        <header><h3>Alerts</h3></header>
+        <p class="sub">Every change of state, and stays past the long-stay limit. Later events are dimmed.</p>
+        <div class="zevents" id="zevents"></div>
+      </div>
+    </div>
+
+    <div class="grid g-2 zones-body" data-adv>
+      <div class="card">
+        <header><h3>Method</h3></header>
+        <p class="sub">How a person is placed in a zone, and how flicker is smoothed. Changes preview at once; nothing is saved until you save.</p>
+        <form class="zparams" id="zparams">
+          <label>Anchor
+            <select name="anchor">
+              <option value="lower">Lower body, for people sitting behind tables</option>
+              <option value="foot">Feet, for people standing or walking</option>
+              <option value="center">Centre of the person</option>
+              <option value="overlap">Lower half of the person overlapping the zone</option>
+            </select>
+          </label>
+          <label>Ignore stays shorter than <output for="on_sec"></output><input type="range" name="on_sec" min="0" max="30" step="0.5"></label>
+          <label>Bridge gaps shorter than <output for="off_sec"></output><input type="range" name="off_sec" min="0" max="60" step="0.5"></label>
+          <label>Carry a lost person for <output for="gap_fill_sec"></output><input type="range" name="gap_fill_sec" min="0" max="10" step="0.5"></label>
+          <label title="A person stays in their zone until they move this far past its edge, or into the middle of another zone">Hold people in their zone by <output for="stick" data-unit="%"></output><input type="range" name="stick" min="0" max="1.5" step="0.05"></label>
+          <label>Long stay after <output for="long_stay_sec"></output><input type="range" name="long_stay_sec" min="30" max="1800" step="30"></label>
+        </form>
+        <p class="sub" id="zparams-state"></p>
+        <div class="row-end"><button class="quiet" id="zparams-reset" disabled>Discard</button><button class="primary" id="zparams-save" disabled>Save settings</button></div>
+      </div>
+      <div class="card">
+        <header><h3>Validity</h3></header>
+        <p class="sub">Checks that need no labels, the next-free rules against what happened, and accuracy once someone labels occupancy.</p>
+        <dl class="kv" id="zvalid"></dl>
+        <div class="table-wrap zeval" id="znf-eval"></div>
+        <div class="table-wrap zeval" id="zgt"></div>
       </div>
     </div>
   </section>

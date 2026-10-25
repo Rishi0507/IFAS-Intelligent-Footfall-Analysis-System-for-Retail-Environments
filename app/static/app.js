@@ -4,21 +4,25 @@
    so a filter chip changes every chart consistently - the analytics.json is
    the raw record, not a set of pre-baked chart payloads.
 
-   The page is six tabbed views. One 3D stage (stage3d.js) is shared between
+   The page is seven tabbed views. One 3D stage (stage3d.js) is shared between
    the overview hero and the Floor tab: the element is moved, not rebuilt, so
-   there is only ever one WebGL scene for it. */
+   there is only ever one WebGL scene for it. The Zones tab (zones.js) reads
+   the run's zone analysis, which filters do not apply to: a table is taken
+   whoever sits at it. */
 
 import * as C from './charts.js';
 import { hasWebGL, cssVar } from './three-kit.js';
 import { createFloor } from './stage3d.js';
 import { createSkyline } from './skyline3d.js';
+import { createZonesView } from './zones.js';
+import { createGuideView } from './guide.js';
 
 const { fmt } = C;
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-const VIEWS = ['overview', 'floor', 'people', 'trends', 'video', 'log'];
+const VIEWS = ['overview', 'guide', 'zones', 'floor', 'people', 'trends', 'video', 'log'];
 const GENDERS = ['female', 'male'];
 const AGES = ['Age16-30', 'Age31-45', 'Age46-60', 'AgeAbove61'];
 const TIERS = ['Passing', 'Glancing', 'Browsing', 'Engaged', 'Dwelling'];
@@ -39,6 +43,7 @@ const ICON = {
   people: '<svg viewBox="0 0 18 18"><circle cx="9" cy="5.6" r="2.8"/><path d="M3.4 15.6c.5-3.1 2.7-4.9 5.6-4.9s5.1 1.8 5.6 4.9"/></svg>',
   stay: '<svg viewBox="0 0 18 18"><path d="M5 2.4h8M5 15.6h8M5.8 2.4c0 3.4 3.2 4 3.2 6.6s-3.2 3.2-3.2 6.6M12.2 2.4c0 3.4-3.2 4-3.2 6.6s3.2 3.2 3.2 6.6"/></svg>',
   spot: '<svg viewBox="0 0 18 18"><path d="M9 16.2s5-4.5 5-8.4a5 5 0 0 0-10 0c0 3.9 5 8.4 5 8.4z"/><circle cx="9" cy="7.7" r="1.8"/></svg>',
+  seat: '<svg viewBox="0 0 18 18"><rect x="2.4" y="3" width="13.2" height="6" rx="1.6"/><path d="M4.6 9v6M13.4 9v6M2.4 12.2h13.2"/></svg>',
 };
 
 const state = {
@@ -55,6 +60,8 @@ const state = {
 
 let floor = null;       // 3D floor stage, or null when WebGL is unavailable
 let skyline = null;     // created the first time the People tab opens
+let zonesView = null;   // the Zones tab
+let guideView = null;   // the Guide tab
 
 /* ------------------------------------------------------------- loading */
 async function loadRuns(select) {
@@ -135,10 +142,13 @@ async function loadRun(id) {
   label.href = `label.html?run=${encodeURIComponent(id)}`;
   const hasFrame = !!(run?.has_poster || run?.has_video);
   $('#sw-frame').hidden = !(floor && hasFrame);
+  $('#sw-zones').hidden = !(floor && doc.zones);
   if (!hasFrame) { $('#chk-frame').checked = false; floor?.setLayers({ frame: false }); }
 
   setupVideo(id, doc);
   buildScrubBars(doc);
+  zonesView?.setRun(id, doc, run);
+  guideView?.setRun(id, doc);
   renderAll();
   renderTrends();
   floor?.intro();
@@ -345,11 +355,13 @@ function renderHero(doc, rows) {
     host.innerHTML = `<li>${ICON.people}<span>${filtering() ? 'No one fits these filters. Clear them to see everyone.' : 'No people were found in this footage.'}</span></li>`;
     return;
   }
-  const bins = timeline(rows, doc);
+  const { bins, already } = arrivalBins(timeline(rows, doc), rows);
   const busiest = bins.reduce((b, c) => (c.entries > b.entries ? c : b), bins[0]);
   const g = countBy(rows, 'gender', GENDERS);
   const a = countBy(rows, 'age', AGES);
   const hasAge = rows.some((r) => r.age);
+  const gKnown = g.female + g.male;
+  const aKnown = AGES.reduce((n, k) => n + a[k], 0) || 1;
   const topAge = AGES.reduce((x, k) => (a[k] > a[x] ? k : x), AGES[0]);
   const med = median(rows.map((r) => r.dwell_sec));
   const zones = ['Left', 'Center', 'Right'];
@@ -358,11 +370,17 @@ function renderHero(doc, rows) {
   const lingered = rows.filter((r) => r.dwell_sec >= 30).length;
   const women = g.female >= g.male;
 
+  const zl = zoneLine(doc);
   const lines = [
-    [ICON.clock, `Busiest at <b>${fmt.clock(busiest.t)}</b>, when ${plural(busiest.entries, 'person', 'people')} arrived.`],
-    [ICON.people, `Mostly <b>${women ? 'women' : 'men'}</b> (${fmt.pct((Math.max(g.female, g.male) / rows.length) * 100, 0)})`
+    [ICON.clock, (busiest.entries
+      ? `Busiest at <b>${fmt.clock(busiest.t)}</b>, when ${plural(busiest.entries, 'person', 'people')} arrived.`
+      : 'Nobody new arrived during the recording.')
+      + (already ? ` ${plural(already, 'person was', 'people were')} already there when it started.` : '')],
+    [ICON.people, (gKnown
+      ? `Mostly <b>${women ? 'women' : 'men'}</b> (${fmt.pct((Math.max(g.female, g.male) / gKnown) * 100, 0)} of those the system was sure about)`
+      : "The system was not sure about anyone’s gender")
       + (hasAge
-        ? `, and the biggest age group was <b>${AGE_SHORT[topAge]}</b> (${fmt.pct((a[topAge] / rows.length) * 100, 0)}).`
+        ? `, and the biggest age group was <b>${AGE_SHORT[topAge]}</b> (${fmt.pct((a[topAge] / aKnown) * 100, 0)}).`
         : '. Ages were not measured in this run.')],
     [ICON.stay, `Half of them stayed longer than <b>${fmt.dur(med)}</b>`
       + (lingered ? `, and ${fmt.int(lingered)} stayed more than 30 seconds.` : '.')],
@@ -371,9 +389,13 @@ function renderHero(doc, rows) {
       ? 'People were spread evenly across the view.'
       : `The <b>${topZone.toLowerCase()}</b> of the view was the busiest part (${fmt.pct((inZone(topZone) / rows.length) * 100, 0)} of people).`],
   ];
-  // Same for gender: a small or half-hidden person can go either way.
+  // A small or half-hidden person can go either way: say how many were left
+  // as "not sure" rather than guessed, and how many guesses were close.
+  const unsure = rows.filter((r) => !r.gender && r.gender_unsure).length;
   const shaky = rows.filter((r) => r.gender && r.gender_conf < 0.7).length;
-  if (shaky) {
+  if (unsure) {
+    lines[1][1] += ` It said "not sure" for ${plural(unsure, 'person', 'people')} rather than guess.`;
+  } else if (shaky) {
     lines[1][1] += ` The system was unsure about the gender of ${shaky === rows.length ? 'all of them' : plural(shaky, 'person', 'people')}.`;
   }
   // The age model says how sure it was. When it was not, say so next to the claim.
@@ -381,7 +403,30 @@ function renderHero(doc, rows) {
   if (aged.length && mean(aged.map((r) => r.age_conf)) < 0.5) {
     lines[1][1] += ' The age model was unsure here, so treat the age as a rough guess.';
   }
+  // Drawn zones say more than the frame's left, centre and right thirds.
+  if (zl) lines.splice(3, 1, [ICON.seat, zl]);
   host.innerHTML = lines.map(([ico, text]) => `<li>${ico}<span>${text}</span></li>`).join('');
+}
+
+/* People in view when the recording starts did not arrive in its first bin:
+   they were already there. Arrival counts leave them out, so a recording
+   that opens on a full room does not report its busiest moment at 0:00. */
+function arrivalBins(bins, rows) {
+  const already = rows.filter((r) => r.first_sec < 1).length;
+  if (!already || !bins.length) return { bins, already };
+  return { bins: bins.map((b, i) => (i ? b : { ...b, entries: Math.max(0, b.entries - already) })), already };
+}
+
+/* One sentence about seats and tables, when the run has zones. */
+function zoneLine(doc) {
+  const z = doc.zones;
+  if (!z || !z.summary.seats_tables) return null;
+  const s = z.summary;
+  const kind = z.zones.every((x) => x.kind === 'seat') ? 'seats' : z.zones.every((x) => x.kind === 'table') ? 'tables' : 'zones';
+  const last = z.next_free?.at_end?.[0];
+  return `<b>${fmt.int(s.occupied_at_end)} of ${fmt.int(s.seats_tables)}</b> ${kind} were taken at the end, `
+    + `each taken ${fmt.pct(s.mean_utilization * 100, 0)} of the time on average`
+    + (last ? `; <b>${esc(last.zone)}</b> was held longest.` : '.');
 }
 
 function renderOverview(doc, rows) {
@@ -415,11 +460,12 @@ function renderOverview(doc, rows) {
   const dh = histogram(dwells, 16, 0, Math.max(10, ...dwells));
   C.sparkline($('#k-dwell-spark'), dh.counts, COLOR.one);
 
-  const busiest = bins.reduce((b, c) => (c.entries > b.entries ? c : b), bins[0] || { entries: 0, t: 0 });
+  const arrivals = arrivalBins(bins, rows).bins;
+  const busiest = arrivals.reduce((b, c) => (c.entries > b.entries ? c : b), arrivals[0] || { entries: 0, t: 0 });
   $('#k-rate').innerHTML = `${fmt.int(busiest.entries)}<small>${busiest.entries === 1 ? 'arrival' : 'arrivals'}</small>`;
   $('#k-rate-note').textContent =
     `${fmt.clock(busiest.t)} to ${fmt.clock(busiest.t + doc.timeline.bin_sec)}, ${fmt.num(rows.length / ((m.duration_sec || 1) / 60), 1)} a minute overall`;
-  C.sparkline($('#k-rate-spark'), bins.map((b) => b.entries), COLOR.one);
+  C.sparkline($('#k-rate-spark'), arrivals.map((b) => b.entries), COLOR.one);
 
   C.splitBar($('#k-gender-split'), [
     { label: 'Women', value: g.female, color: COLOR.female },
@@ -955,9 +1001,9 @@ function renderLog(rows) {
      <tbody>${sorted.slice(0, 500).map((r) => `<tr>
        <td>${r.id}</td><td>${fmt.clock(r.first_sec)}</td><td class="num">${fmt.num(r.dwell_sec, 1)}s</td>
        <td>${r.tier}</td>
-       <td><span class="pill"><i class="swatch" style="background:${COLOR[r.gender] || COLOR.none}"></i>${cap(r.gender)}</span></td>
+       <td><span class="pill"${r.gender_unsure ? ` title="Left as not sure: ${esc(r.gender_unsure)}"` : ''}><i class="swatch" style="background:${COLOR[r.gender] || COLOR.none}"></i>${r.gender ? cap(r.gender) : 'Not sure'}</span></td>
        <td class="num">${fmt.fixed(r.gender_conf)}</td>
-       <td><span class="pill"><i class="swatch" style="background:${COLOR.age[r.age] || COLOR.none}"></i>${AGE_TICK[r.age] || 'Unknown'}</span></td>
+       <td><span class="pill"${r.age_unsure ? ` title="Left as not sure: ${esc(r.age_unsure)}"` : ''}><i class="swatch" style="background:${COLOR.age[r.age] || COLOR.none}"></i>${AGE_TICK[r.age] || 'Not sure'}</span></td>
        <td class="num">${fmt.fixed(r.age_conf)}</td>
        <td>${r.zone}</td><td>${cap(r.flow)}</td><td class="num">${r.frames}</td>
        <td class="num">${fmt.fixed(r.det_conf)}</td><td class="num">${fmt.pct(r.avg_size_pct)}</td></tr>`).join('')
@@ -1026,10 +1072,11 @@ function setupVideo(id, doc) {
 
 /* One clock for the whole page: the video, the 3D floor, the occupancy chart
    and the "at this moment" panel all read state.playhead. */
-function setPlayhead(t, { fromVideo = false, fromStage = false } = {}) {
+function setPlayhead(t, { fromVideo = false, fromStage = false, fromZones = false } = {}) {
   const dur = state.doc?.meta.duration_sec || 0;
   state.playhead = Math.max(0, Math.min(dur, t));
   if (!fromStage) floor?.setTime(state.playhead);
+  zonesView?.tick(state.playhead, { fromZones });
   if (!fromVideo && state.video && state.video.paused && Number.isFinite(state.video.duration)) {
     state.video.currentTime = Math.min(state.playhead, state.video.duration);
   }
@@ -1094,7 +1141,7 @@ const colorOf = (r) => ({
 }[state.colorBy]);
 
 const describe = (r) => [
-  { label: 'Gender', value: cap(r.gender), color: COLOR[r.gender] },
+  { label: 'Gender', value: r.gender ? cap(r.gender) : 'Not sure', color: COLOR[r.gender] },
   { label: 'Age', value: AGE_SHORT[r.age] || 'Not measured' },
   { label: 'Stayed', value: fmt.dur(r.dwell_sec) },
   { label: 'Engagement', value: r.tier, color: COLOR.tier[r.tier] },
@@ -1209,7 +1256,9 @@ function wireStage() {
     if (state.doc) renderFlatMap(state.doc, filtered());
   };
   $('#chk-frame').onchange = (e) => floor?.setLayers({ frame: e.target.checked });
+  $('#chk-zones').onchange = (e) => floor?.setLayers({ zones: e.target.checked });
   $('#open-floor').onclick = () => setView('floor');
+  $('#open-guide').onclick = () => setView('guide');
   el.addEventListener('pointerdown', () => $('#stage-hint').classList.add('gone'), { once: true });
 }
 
@@ -1375,6 +1424,7 @@ function setView(view, { remember = true } = {}) {
   });
   moveGlider();
   placeStage(view);
+  zonesView?.show(view === 'zones');
   if (view === 'people') ensureSkyline();
   // Charts mounted while their tab was hidden had no width to draw into.
   $$(`#view-${view} [id^="c-"], #view-${view} .spark`).forEach((el) => el.__render?.());
@@ -1401,7 +1451,7 @@ function wireTabs() {
     b.focus();
     setView(b.dataset.view);
   });
-  // 1 to 6 jump straight to a tab, unless the user is typing somewhere.
+  // 1 to 8 jump straight to a tab, unless the user is typing somewhere.
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target instanceof Element && e.target.closest('input, select, textarea, dialog')) return;
@@ -1483,6 +1533,23 @@ function init() {
   };
   $('#btn-csv').onclick = exportCsv;
   wireStage();
+  zonesView = createZonesView({
+    $, $$, C, esc,
+    getState: () => state,
+    seek,
+    setPlayhead,
+    onAnalysis: (block) => {
+      if (state.doc) state.doc.zones = block;
+      const run = state.runs.find((r) => r.id === state.runId);
+      if (run) run.has_zones = true;
+      $('#sw-zones').hidden = !floor;
+      renderHero(state.doc, filtered());
+      renderStage(state.doc, filtered());       // the floor's zone tiles follow the new zones
+      if (state.doc) delete state.doc.guide;    // written again by the server with the new zones
+      guideView?.setRun(state.runId, state.doc);
+    },
+  });
+  guideView = createGuideView($('#guide-root'));
   wireTabs();
   wireRunPicker();
   wireMode();

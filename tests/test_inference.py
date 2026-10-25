@@ -305,3 +305,29 @@ def test_long_trail_keeps_its_end_when_thinned():
         assert len(thin) == min(n, 60)
         assert thin[0] == path[0] and thin[-1] == path[-1]
         assert [p[0] for p in thin] == sorted({p[0] for p in thin})   # in order, no repeats
+
+
+# ------------------------------------------------- votes over the whole stay
+def test_spread_votes_double_their_gap_every_four():
+    from src.inference.tracker import Track
+    t = Track(id=1, box=(0, 0, 10, 10), first_frame=0, last_frame=0)
+    taken = []
+    for f in range(0, 2000):
+        if t.needs_vote(f, every=10, cap=40, spread=True, max_gap=80):
+            t.vote(gender_probs={"female": 0.1, "male": 0.9}, frame_idx=f)
+            taken.append(f)
+    gaps = [b - a for a, b in zip(taken, taken[1:])]
+    assert gaps[:3] == [10, 10, 10] and gaps[3:7] == [20, 20, 20, 20]
+    assert max(gaps) == 80                                   # capped
+
+
+def test_recent_label_follows_the_box_and_halves_that_disagree_are_flagged():
+    from src.inference.tracker import Track
+    t = Track(id=1, box=(0, 0, 10, 10), first_frame=0, last_frame=0)
+    for f in range(6):
+        t.vote(gender_probs={"female": 0.95, "male": 0.05}, frame_idx=f)
+    assert t.consistent(0)
+    for f in range(6, 12):
+        t.vote(gender_probs={"female": 0.05, "male": 0.95}, frame_idx=f)
+    assert t.recent(0)[0] == "male"                          # the box shows someone else now
+    assert not t.consistent(0)                               # no one label fits the whole track

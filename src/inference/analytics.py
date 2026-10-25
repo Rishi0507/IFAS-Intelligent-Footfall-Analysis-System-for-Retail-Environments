@@ -71,9 +71,29 @@ def _tier(dwell):
     return DWELL_TIERS[-1][0]
 
 
+def _label(t, which, min_conf):
+    """A person's label, or None when it should not be trusted: the votes
+    changed their mind halfway (the box most likely moved between two people),
+    or the pooled confidence is under `min_conf`. Returns (label, conf, why)."""
+    label, conf = t.gender() if which == 0 else t.age()
+    if label is None:
+        return None, 0.0, None
+    if hasattr(t, "consistent") and not t.consistent(which):
+        return None, conf, "votes disagree"
+    if conf < min_conf:
+        return None, conf, "low confidence"
+    return label, conf, None
+
+
 def build_analytics(tracks, meta, config, occupancy_by_frame, model_card=None,
-                    bin_sec=5.0, heat_cols=16, heat_rows=9, min_frames=3):
-    """tracks: list[Track] - occupancy_by_frame: {frame_idx: n_people}."""
+                    bin_sec=5.0, heat_cols=16, heat_rows=9, min_frames=3,
+                    min_gender_conf=0.0, min_age_conf=0.0):
+    """tracks: list[Track] - occupancy_by_frame: {frame_idx: n_people}.
+
+    A label below `min_gender_conf` / `min_age_conf`, or one whose votes
+    disagree between the first and second half of the stay, is left out
+    (None) and the reason kept in `gender_unsure` / `age_unsure`: a share of
+    "don't know" is better than a confident wrong answer."""
     fps = meta.get("fps") or 25.0
     w, h = meta["width"], meta["height"]
     duration = meta.get("duration_sec") or (meta.get("frames_total", 0) / fps)
@@ -84,8 +104,8 @@ def build_analytics(tracks, meta, config, occupancy_by_frame, model_card=None,
     records = []
     heat = [[0.0] * heat_cols for _ in range(heat_rows)]
     for t in kept:
-        g, g_conf = t.gender()
-        a, a_conf = t.age()
+        g, g_conf, g_why = _label(t, 0, min_gender_conf)
+        a, a_conf, a_why = _label(t, 1, min_age_conf)
         first_sec = t.first_frame / fps
         last_sec = t.last_frame / fps
         dwell = max(last_sec - first_sec, 1.0 / fps)
@@ -117,6 +137,8 @@ def build_analytics(tracks, meta, config, occupancy_by_frame, model_card=None,
             "age": a,
             "age_conf": round(a_conf, 3),
             "age_votes": dict(t.age_votes),
+            "gender_unsure": g_why,
+            "age_unsure": a_why,
             "first_sec": round(first_sec, 2),
             "last_sec": round(last_sec, 2),
             "dwell_sec": round(dwell, 2),

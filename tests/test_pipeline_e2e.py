@@ -5,6 +5,7 @@ stubs. Everything else - decoding, tracking, voting, annotation, MP4 writing and
 analytics - is the production code path.
 """
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -86,6 +87,10 @@ def test_process_video_writes_video_and_analytics(video, tmp_path):
     assert doc["meta"]["width"] == W and doc["meta"]["height"] == H
     assert doc["meta"]["frames_total"] == N_FRAMES
     assert doc["meta"]["has_video"] is True
+    # The zones view's clean copy exists exactly when ffmpeg could write it.
+    assert doc["meta"]["has_clean_video"] == (out / "clean.mp4").exists()
+    if shutil.which("ffmpeg"):
+        assert doc["meta"]["has_clean_video"]
     assert doc["kpis"]["visitors"] == 2
     assert doc["kpis"]["peak_occupancy"] == 2
     # Every crop got both classifiers' votes.
@@ -213,9 +218,30 @@ class SplitGender:
 
 
 def test_pooling_option_changes_the_label(video, tmp_path):
-    common = dict(stride=1, write_video=False, device="cpu", detector=StubDetector())
+    # The votes here are weak on purpose; keep every label, however unsure.
+    common = dict(stride=1, write_video=False, device="cpu", detector=StubDetector(), min_gender_conf=0.0)
     by_vote = process_video(video, tmp_path / "a", gender_model=SplitGender(), **common)
     by_mean = process_video(video, tmp_path / "b", gender_model=SplitGender(), pooling="mean", **common)
     assert by_vote["tracks"][0]["gender"] == "female"
     assert by_mean["tracks"][0]["gender"] == "male"
     assert by_mean["config"]["pooling"] == "mean"
+
+
+def test_unsure_labels_are_reported_as_unknown(video, tmp_path):
+    doc = process_video(video, tmp_path / "u", stride=1, write_video=False, device="cpu",
+                        detector=StubDetector(), gender_model=SplitGender(), min_gender_conf=0.6)
+    assert all(t["gender"] is None and t["gender_unsure"] == "low confidence" for t in doc["tracks"])
+    assert doc["config"]["min_gender_conf"] == 0.6
+
+
+def test_votes_are_spread_over_the_stay(video, tmp_path):
+    common = dict(stride=1, write_video=False, device="cpu", detector=StubDetector(),
+                  gender_model=StubGender(), vote_every_sec=0.1, max_votes=40, export_crops=True)
+    fixed = process_video(video, tmp_path / "f", vote_spread=False, **common)
+    spread = process_video(video, tmp_path / "s", vote_spread=True, **common)
+    # Same cap, but spread votes thin out as the stay goes on.
+    assert sum(t["classified_frames"] for t in spread["tracks"]) <         sum(t["classified_frames"] for t in fixed["tracks"])
+    frames = sorted(json.loads(l)["frame"] for l in open(tmp_path / "s" / "crops.jsonl")
+                    if json.loads(l)["track"] == spread["tracks"][0]["id"])
+    gaps = [b - a for a, b in zip(frames, frames[1:])]
+    assert gaps[-1] > gaps[0]

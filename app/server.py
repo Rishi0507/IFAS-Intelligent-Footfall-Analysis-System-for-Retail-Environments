@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))   # so `src.inference` imports under any launcher
 RUNS = ROOT / "outputs" / "runs"
+CAMERA_ZONES = ROOT / "outputs" / "zones"      # one zones file per site and camera
 STATIC = Path(__file__).resolve().parent / "static"
 RUNS.mkdir(parents=True, exist_ok=True)
 
@@ -74,8 +75,11 @@ def list_runs():
             "site": doc["meta"].get("site"),
             "camera": doc["meta"].get("camera"),
             "has_video": (d / "video.mp4").exists(),
+            "has_clean_video": (d / "clean.mp4").exists(),
             "has_poster": (d / "poster.jpg").exists(),
             "has_crops": (d / "crops.jsonl").exists(),
+            "has_zones": bool(doc.get("zones")),
+            "has_boxes": (d / "track_boxes.json").exists(),
             "annotators": _annotators(d),
         })
     runs.sort(key=lambda r: r["demo"])
@@ -87,11 +91,32 @@ def get_analytics(run_id: str):
     return FileResponse(_run_dir(run_id) / "analytics.json", media_type="application/json")
 
 
+@app.get("/api/runs/{run_id}/guide")
+def get_guide(run_id: str):
+    """The plain-language guide: stored with runs processed since it existed,
+    written on the spot for older ones (it only reads analytics.json)."""
+    from src.inference.guide import shop_guide
+    path = _run_dir(run_id) / "analytics.json"
+    if not path.exists():
+        raise HTTPException(404, "No such run.")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return doc.get("guide") or shop_guide(doc)
+
+
 @app.get("/api/runs/{run_id}/video.mp4")
 def get_video(run_id: str, request: Request):
     path = _run_dir(run_id) / "video.mp4"
     if not path.exists():
         raise HTTPException(404, "This run has no annotated video.")
+    return _ranged(path, request, "video/mp4")
+
+
+@app.get("/api/runs/{run_id}/clean.mp4")
+def get_clean_video(run_id: str, request: Request):
+    """The footage with nothing drawn on it, for the zones view."""
+    path = _run_dir(run_id) / "clean.mp4"
+    if not path.exists():
+        raise HTTPException(404, "This run has no clean video.")
     return _ranged(path, request, "video/mp4")
 
 
@@ -125,6 +150,17 @@ def _ranged(path: Path, request: Request, media_type: str, chunk=1024 * 512):
         "content-length": str(end - start + 1),
         "accept-ranges": "bytes",
     })
+
+
+@app.get("/api/runs/{run_id}/frames/{name}")
+def get_frame(run_id: str, name: str):
+    """A clean (unannotated) frame saved by the pipeline every 30 s."""
+    if not re.fullmatch(r"\d{6}\.jpg", name):
+        raise HTTPException(404, "No such frame.")
+    path = _run_dir(run_id) / "frames" / name
+    if not path.exists():
+        raise HTTPException(404, "No such frame.")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @app.get("/api/runs/{run_id}/poster.jpg")
@@ -213,6 +249,124 @@ def save_labels(run_id: str, body: dict = Body(...)):
     return {"saved": len(clean)}
 
 
+# --------------------------------------------------------------------- zones
+def _zone_error(exc):
+    return HTTPException(400, str(exc))
+
+
+@app.get("/api/runs/{run_id}/zones")
+def get_zones(run_id: str):
+    """The run's zones, their analysis and the settings behind it."""
+    from src.inference.zones import ZoneParams
+    from dataclasses import asdict
+    d = _run_dir(run_id)
+    zones = None
+    if (d / "zones.json").exists():
+        with open(d / "zones.json", encoding="utf-8") as f:
+            zones = json.load(f)
+    with open(d / "analytics.json", encoding="utf-8") as f:
+        block = json.load(f).get("zones")
+    return {
+        "zones": zones,
+        "analysis": block,
+        "params": (block or {}).get("params") or asdict(ZoneParams()),
+        "has_boxes": (d / "track_boxes.json").exists(),
+        "annotators": sorted(p.stem[len("zone_labels_"):] for p in d.glob("zone_labels_*.json")),
+    }
+
+
+@app.put("/api/runs/{run_id}/zones")
+def put_zones(run_id: str, body: dict = Body(...)):
+    """Recompute zone occupancy with new zones and/or settings.
+
+    Body: {"zones": <zones document> | null, "params": {...}, "save": true,
+    "camera": true}. With save, zones.json and analytics.json are rewritten;
+    with camera, the zones also become the default for every later recording
+    from the same site and camera. Without save it is a preview: nothing on
+    disk changes, which is what the settings sliders use.
+    """
+    from src.inference.zones import ZoneParams, analyse_run, camera_zone_file, write_json_atomic
+    d = _run_dir(run_id)
+    try:
+        params = ZoneParams.from_dict(body.get("params"))
+        save = bool(body.get("save", True))
+        block = analyse_run(d, body.get("zones"), params, save=save)
+    except FileNotFoundError as exc:
+        raise HTTPException(409, str(exc))
+    except ValueError as exc:
+        raise _zone_error(exc)
+    if save and body.get("camera"):
+        with open(d / "analytics.json", encoding="utf-8") as f:
+            meta = json.load(f)["meta"]
+        with open(d / "zones.json", encoding="utf-8") as f:
+            zones = json.load(f)
+        CAMERA_ZONES.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(camera_zone_file(CAMERA_ZONES, meta.get("site"), meta.get("camera")),
+                          dict(zones, source="user"))
+    return block
+
+
+@app.post("/api/runs/{run_id}/zones/propose")
+def propose_run_zones(run_id: str, body: dict = Body(default={})):
+    """Seats found from where people sat still. Nothing is saved."""
+    from src.inference.zones import ZoneParams, load_track_boxes, propose_zones
+    d = _run_dir(run_id)
+    try:
+        params = ZoneParams.from_dict(body.get("params"))
+        min_stay = float(body.get("min_stay_sec", 20.0))
+        return propose_zones(load_track_boxes(d), params, min_stay_sec=max(1.0, min_stay))
+    except FileNotFoundError as exc:
+        raise HTTPException(409, str(exc))
+    except (TypeError, ValueError) as exc:
+        raise _zone_error(exc)
+
+
+@app.get("/api/runs/{run_id}/zone-labels/{annotator}")
+def get_zone_labels(run_id: str, annotator: str):
+    if not ANNOTATOR.fullmatch(annotator):
+        raise HTTPException(400, "Annotator names use letters, digits, _ and - only.")
+    path = _run_dir(run_id) / f"zone_labels_{annotator}.json"
+    if not path.exists():
+        return {"run": run_id, "annotator": annotator, "frames": {}}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+@app.post("/api/runs/{run_id}/zone-labels")
+def save_zone_labels(run_id: str, body: dict = Body(...)):
+    """Ground truth for zone occupancy: at each labelled moment, whether each
+    zone was occupied (true / false; null = cannot tell). One file per
+    annotator, for agreement (scripts/research/zone_study.py)."""
+    d = _run_dir(run_id)
+    annotator = str(body.get("annotator", ""))
+    if not ANNOTATOR.fullmatch(annotator):
+        raise HTTPException(400, "Annotator names use letters, digits, _ and - only.")
+    frames = body.get("frames")
+    if not isinstance(frames, dict) or len(frames) > 5000:
+        raise HTTPException(400, "frames must be an object keyed by time in seconds.")
+    clean = {}
+    for t, states in frames.items():
+        try:
+            key = f"{float(t):.2f}"
+        except ValueError:
+            raise HTTPException(400, f"Bad time {t!r}.")
+        if not isinstance(states, dict):
+            raise HTTPException(400, f"At {t}: states must be an object keyed by zone id.")
+        row = {}
+        for zid, v in states.items():
+            if not re.fullmatch(r"[A-Za-z0-9_.-]{1,24}", str(zid)) or v not in (True, False, None):
+                raise HTTPException(400, f"At {t}: zone {zid!r} must be true, false or null.")
+            row[str(zid)] = v
+        clean[key] = row
+    doc = {"run": run_id, "annotator": annotator, "zones_version": body.get("zones_version"),
+           "frames": clean}
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".zone_labels_", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    os.replace(tmp, d / f"zone_labels_{annotator}.json")
+    return {"saved": len(clean)}
+
+
 @app.get("/api/trends")
 def get_trends(include_demo: bool = False, site: str = "", camera: str = ""):
     """Aggregate every run into weekday / hour / season views."""
@@ -234,6 +388,10 @@ def _process(job_id, video_path, run_dir, opts):
         with _lock:
             JOBS[job_id].update(kw)
 
+    from src.inference.zones import camera_zone_file
+    saved = camera_zone_file(CAMERA_ZONES, opts.get("site") or "Store", opts.get("camera") or "Camera 1")
+    if saved.exists():
+        opts = dict(opts, zones=saved)              # this camera's zones, drawn on an earlier run
     try:
         process_video(video_path, run_dir, progress=progress, **opts)
         with _lock:
@@ -256,7 +414,8 @@ async def create_run(background: BackgroundTasks, video: UploadFile = File(...),
                      det_conf: float = Form(0.4), write_video: bool = Form(True),
                      max_frames: int = Form(0), captured_at: str = Form(""),
                      site: str = Form(""), camera: str = Form(""),
-                     verifier: str = Form("yolov8m.pt"), export_crops: bool = Form(False)):
+                     verifier: str = Form("yolov8m.pt"), export_crops: bool = Form(False),
+                     tiles: str = Form(""), attributes: str = Form("ensemble")):
     run_id = f"{Path(video.filename).stem[:40] or 'run'}-{uuid.uuid4().hex[:6]}"
     run_dir = RUNS / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -280,6 +439,8 @@ async def create_run(background: BackgroundTasks, video: UploadFile = File(...),
         "camera": camera or None,
         "verifier_weights": None if verifier in ("", "none") else verifier,
         "export_crops": export_crops,
+        "tiles": tiles if tiles not in ("", "none") else None,
+        "attributes": attributes if attributes in ("ensemble", "clip", "vit") else "ensemble",
     })
     return JSONResponse({"job": job_id, "run_id": run_id}, status_code=202)
 
@@ -291,7 +452,20 @@ def job_status(job_id: str):
     return JOBS[job_id]
 
 
-app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
+class _Revalidated(StaticFiles):
+    """The dashboard's own files, which the browser must check before reusing.
+
+    Without a Cache-Control header browsers cache them by heuristic, and after
+    an update keep running yesterday's app.js against today's index.html. The
+    check is a cheap 304 when nothing changed."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["cache-control"] = "no-cache"
+        return resp
+
+
+app.mount("/", _Revalidated(directory=STATIC, html=True), name="static")
 
 
 if __name__ == "__main__":

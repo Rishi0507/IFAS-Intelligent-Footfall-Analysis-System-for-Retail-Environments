@@ -427,6 +427,108 @@ export function heatgrid(container, opts) {
   });
 }
 
+/* --------------------------------------------------------- occupancy rows */
+/* One row per zone, one bar per occupied stretch: a Gantt chart of who held
+   which table when. A session that ran past either end of the recording is
+   drawn open on that side (squared, faded), because its true length is not
+   known. The playhead is read on every draw, like `lines`. */
+export function timelineRows(container, opts) {
+  mount(container, (root, w) => {
+    const { rows, duration, rowH = 16, labelW = 54, color = 'var(--zone-taken)',
+      marker = null, onSeek = null, xFormat = fmt.clock, tipRows = null, highlight = null } = opts;
+    const pad = { t: 6, r: 10, b: 24 };
+    const height = pad.t + rows.length * rowH + pad.b;
+    const svg = svgRoot(root, w, height);
+    const iw = Math.max(10, w - labelW - pad.r);
+    const X = (t) => labelW + (Math.max(0, Math.min(duration, t)) / (duration || 1)) * iw;
+
+    const ticks = niceTicks(duration, Math.max(2, Math.floor(iw / 90)));
+    for (const t of ticks) {
+      if (t > duration + 1e-6) continue;
+      el('line', { class: 'grid-line', x1: X(t), x2: X(t), y1: pad.t, y2: pad.t + rows.length * rowH }, svg);
+      const tx = el('text', { class: 'lbl', x: X(t), y: height - 7, 'text-anchor': 'middle' }, svg);
+      tx.textContent = xFormat(t);
+    }
+    rows.forEach((row, i) => {
+      const y = pad.t + i * rowH;
+      const on = highlight && highlight === row.id;
+      const tx = el('text', { class: on ? 'val' : 'lbl', x: labelW - 8, y: y + rowH / 2 + 4, 'text-anchor': 'end' }, svg);
+      tx.textContent = row.label;
+      el('rect', { x: labelW, y: y + rowH / 2 - 0.5, width: iw, height: 1, fill: 'var(--grid)' }, svg);
+      row.spans.forEach((s, k) => {
+        const x1 = X(s.start), x2 = Math.max(X(s.end), x1 + 1.5);
+        const h = Math.max(4, rowH - 6);
+        const bar = el('rect', {
+          class: 'mark', x: x1, y: y + (rowH - h) / 2, width: x2 - x1, height: h,
+          rx: Math.min(3, h / 2), fill: s.color || color,
+          'fill-opacity': s.censored_start || s.censored_end ? 0.62 : 0.92,
+        }, svg);
+        const title = `${row.label}: ${xFormat(s.start)} to ${xFormat(s.end)}`;
+        hoverable(bar, title, tipRows ? tipRows(row, s, k) : [{ label: 'Taken for', value: fmt.dur(s.end - s.start) }],
+          onSeek && (() => onSeek(s.start, row, s)));
+      });
+    });
+    const at = typeof marker === 'function' ? marker() : marker;
+    if (at != null) {
+      el('line', { x1: X(at), x2: X(at), y1: pad.t - 4, y2: pad.t + rows.length * rowH + 2,
+        stroke: 'var(--text-1)', 'stroke-width': 1.5, opacity: 0.6 }, svg);
+    }
+    if (onSeek) {
+      const hit = el('rect', { class: 'hit', x: labelW, y: pad.t + rows.length * rowH, width: iw, height: pad.b }, svg);
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('click', (e) => {
+        const bb = svg.getBoundingClientRect();
+        onSeek(((e.clientX - bb.left - labelW) / iw) * duration);
+      });
+    }
+  });
+}
+
+/* ------------------------------------------------------------- step curve */
+/* A right-continuous step function, e.g. a Kaplan-Meier survival curve:
+   the share of sessions still running after t seconds. */
+export function stepCurve(container, opts) {
+  mount(container, (root, w) => {
+    const { t, s, height = 200, color = 'var(--neutral)', xFormat = fmt.dur, marker = null,
+      yLabel = (v) => fmt.pct(v * 100, 0), name = 'Still taken' } = opts;
+    const pad = { t: 14, r: 14, b: 26, l: 42 };
+    const svg = svgRoot(root, w, height);
+    const iw = w - pad.l - pad.r, ih = height - pad.t - pad.b;
+    const tmax = Math.max(1, t[t.length - 1] * 1.04);
+    const X = (v) => pad.l + (v / tmax) * iw;
+    const Y = (v) => pad.t + ih - v * ih;
+    for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+      el('line', { class: 'grid-line', x1: pad.l, x2: w - pad.r, y1: Y(v), y2: Y(v) }, svg);
+      const tx = el('text', { x: pad.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg);
+      tx.textContent = yLabel(v);
+    }
+    for (const v of niceTicks(tmax, Math.max(2, Math.floor(iw / 80)))) {
+      if (v > tmax) continue;
+      const tx = el('text', { class: 'lbl', x: X(v), y: height - 8, 'text-anchor': 'middle' }, svg);
+      tx.textContent = xFormat(v);
+    }
+    let d = `M${X(0)},${Y(s[0])}`;
+    for (let i = 1; i < t.length; i++) d += ` H${X(t[i])} V${Y(s[i])}`;
+    d += ` H${X(tmax)}`;
+    el('path', { class: 'mark', d: `${d} V${Y(0)} H${X(0)} Z`, fill: color, 'fill-opacity': 0.08 }, svg);
+    el('path', { class: 'mark', d, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+    const at = typeof marker === 'function' ? marker() : marker;
+    if (at != null && at <= tmax) {
+      el('line', { x1: X(at), x2: X(at), y1: pad.t, y2: pad.t + ih, stroke: 'var(--zone-next)', 'stroke-width': 1.5, 'stroke-dasharray': '3 3' }, svg);
+    }
+    const valAt = (x) => { let v = s[0]; for (let i = 0; i < t.length && t[i] <= x; i++) v = s[i]; return v; };
+    const cross = el('line', { class: 'crosshair', y1: pad.t, y2: pad.t + ih, x1: pad.l, x2: pad.l, opacity: 0 }, svg);
+    const hit = el('rect', { class: 'hit', x: pad.l, y: pad.t, width: iw, height: ih }, svg);
+    hit.addEventListener('pointermove', (e) => {
+      const bb = svg.getBoundingClientRect();
+      const x = Math.max(0, ((e.clientX - bb.left - pad.l) / iw) * tmax);
+      cross.setAttribute('x1', X(x)); cross.setAttribute('x2', X(x)); cross.setAttribute('opacity', 1);
+      showTip(e, `After ${xFormat(x)}`, [{ label: name, value: yLabel(valAt(x)), color }]);
+    });
+    hit.addEventListener('pointerleave', () => { cross.setAttribute('opacity', 0); hideTip(); });
+  });
+}
+
 /* ------------------------------------------------------------ split bar */
 export function splitBar(container, parts, format = fmt.pct) {
   const total = parts.reduce((s, p) => s + p.value, 0) || 1;

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IFAS Zone Labelling</title>
+<link rel="preload" href="fonts/inter-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="label.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%2315172e'/><path d='M9 22v-6M16 22V10M23 22v-9' stroke='%23ff9a62' stroke-width='3.2' stroke-linecap='round'/></svg>">
+<script>
+  try {
+    const t = localStorage.getItem('ifas-theme');
+    if (t) document.documentElement.dataset.theme = t;
+  } catch (e) { /* storage blocked: follow the OS */ }
+</script>
+</head>
+<body class="label-page">
+
+<header class="bar">
+  <a class="brand" href="./#zones" aria-label="IFAS, back to the dashboard">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="10" fill="var(--accent)"/>
+      <path d="M9 22v-6M16 22V10M23 22v-9" stroke="var(--accent-ink)" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <b>IFAS</b>
+  </a>
+  <span class="bar-title">Label zone occupancy</span>
+  <span class="spacer"></span>
+  <label class="bar-field">
+    <span class="flabel">Recording</span>
+    <select id="run" aria-label="Recording to label"></select>
+  </label>
+  <label class="bar-field">
+    <span class="flabel">Your name</span>
+    <input type="text" id="annotator" placeholder="e.g. rishi" maxlength="32"
+           pattern="[A-Za-z0-9_\-]{1,32}" autocomplete="off" spellcheck="false">
+  </label>
+</header>
+
+<main class="label-main">
+  <section class="card label-empty" id="empty" hidden>
+    <h3>Nothing to label yet</h3>
+    <p class="sub" id="empty-text">Zone labelling needs a recording with zones and saved frames.
+      Process a video, then draw zones (or find seats) in the dashboard's Zones tab.</p>
+    <a class="back" href="./#zones">Back to the dashboard</a>
+  </section>
+
+  <section class="label-work" id="work" hidden>
+    <div class="card person">
+      <header>
+        <h3 id="moment-title">Moment</h3>
+        <span class="badge" id="moment-meta"></span>
+        <span class="spacer"></span>
+        <span class="save-state" id="save-state" role="status"></span>
+      </header>
+      <p class="sub">Click each zone to say whether someone is <b>in it</b> at this moment: once for
+        taken, twice for free, three times for unsure. Unsure zones are left out of the accuracy
+        figures. The system's own answers are hidden on purpose.</p>
+      <div class="zl-frame" id="frame">
+        <img id="frame-img" alt="The camera frame at this moment">
+        <canvas id="frame-canvas" aria-label="Zones to label"></canvas>
+      </div>
+      <div class="person-nav">
+        <button type="button" id="prev">Previous <kbd>←</kbd></button>
+        <button type="button" id="next" class="primary">Next <kbd>→</kbd></button>
+        <button type="button" class="quiet" id="rest-free">Mark the rest free <kbd>R</kbd></button>
+        <span class="spacer"></span>
+        <span class="count" id="moment-count"></span>
+      </div>
+    </div>
+
+    <aside class="card roster">
+      <header><h3>Moments</h3><span class="spacer"></span><span class="count" id="progress"></span></header>
+      <div class="meter"><span id="progress-bar"></span></div>
+      <div class="roster-grid" id="roster"></div>
+      <p class="keys"><kbd>←</kbd> <kbd>→</kbd> move between moments · <kbd>T</kbd> <kbd>F</kbd> <kbd>U</kbd>
+        set the zone under the pointer · <kbd>R</kbd> every unlabelled zone is free</p>
+      <dl class="kv" id="tally"></dl>
+    </aside>
+  </section>
+</main>
+
+<script src="zones-label.js"></script>
+</body>
+</html>

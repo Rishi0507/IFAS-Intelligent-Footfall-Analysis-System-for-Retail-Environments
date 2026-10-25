@@ -274,12 +274,25 @@ def build_trends(runs, include_demo=False, site=None, camera=None):
 
 
 # ---------------------------------------------------------------- insights
-def insights(doc):
-    """Plain-language, single-run observations a shop owner can act on.
+def wilson(k, n, z=1.96):
+    """95% Wilson score interval for a proportion k / n, as (low, high)."""
+    if not n:
+        return (0.0, 0.0)
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return (max(0.0, c - h), min(1.0, c + h))
 
-    Deliberately conservative: each line states what was measured, not a
-    prediction, and anything that needs more than one recording is left to the
-    trends block above.
+
+def insights(doc):
+    """Plain-language findings from one recording.
+
+    Deliberately conservative: each line states what was measured, with its
+    sample size and, for shares, a 95% interval, not a prediction. Anything
+    that needs more than one recording is left to the trends block above.
+    Per-person labels come from classifiers whose accuracy on this footage is
+    unknown until someone labels it, which the interval does not cover.
     """
     k = doc["kpis"]
     tracks = doc.get("tracks", [])
@@ -290,14 +303,20 @@ def insights(doc):
     dur_min = (doc["meta"].get("duration_sec") or 0) / 60.0
     per_hour = _rate_per_hour(doc)
     bin_sec = doc["timeline"]["bin_sec"]
-    bins = doc["timeline"]["bins"]
+    # People in view when the recording starts did not arrive in its first
+    # bin; they are left-censored, so they are kept out of the peak window.
+    already = sum(1 for t in tracks if t.get("first_sec", 1.0) < 1.0)
+    bins = [dict(b) for b in doc["timeline"]["bins"]]
+    if bins and already:
+        bins[0]["entries"] = max(0, bins[0]["entries"] - already)
     busiest = max(bins, key=lambda b: b["entries"])
     quietest = min(bins, key=lambda b: b["entries"])
+    start = f", {already} of them in view from the start" if already else ""
 
     out.append({
         "kind": "traffic",
-        "label": "Footfall",
-        "text": (f"{k['visitors']} people in {dur_min:.1f} minutes - about "
+        "label": "Arrival rate",
+        "text": (f"{k['visitors']} people tracked in {dur_min:.1f} minutes{start} - about "
                  f"{per_hour:.0f} an hour if this pace held."
                  if dur_min >= MIN_MINUTES_TO_EXTRAPOLATE else
                  f"{k['visitors']} "
@@ -317,7 +336,7 @@ def insights(doc):
         peak_text = f"Arrivals were fairly even, peaking at {clock}."
     out.append({
         "kind": "staffing",
-        "label": "Busiest stretch",
+        "label": "Peak window",
         "text": peak_text,
         "window": [busiest["t"], busiest["t"] + bin_sec],
     })
@@ -326,7 +345,7 @@ def insights(doc):
     lingering = sum(1 for t in tracks if t["dwell_sec"] >= 30)
     out.append({
         "kind": "engagement",
-        "label": "Stopping power",
+        "label": "Dwell",
         "text": f"{100 * lingering / len(tracks):.0f}% stayed more than 30 seconds and "
                 f"{100 * passing / len(tracks):.0f}% passed straight through - "
                 f"the typical visit was {k['median_dwell_sec']:.0f} seconds.",
@@ -334,12 +353,15 @@ def insights(doc):
 
     gender = "women" if k["female_pct"] >= k["male_pct"] else "men"
     share = max(k["female_pct"], k["male_pct"])
-    line = f"{share:.0f}% of visitors were {gender}"
+    known = sum(1 for t in tracks if t.get("gender") in ("female", "male"))
+    lo, hi = wilson(round(share / 100.0 * known), known)
+    line = (f"{share:.0f}% of visitors were {gender} (95% interval {100 * lo:.0f}-{100 * hi:.0f}%, "
+            f"n = {known} tracks)")
     if k.get("dominant_age") and any(t["age"] for t in tracks):
         pretty = {"Age16-30": "16-30", "Age31-45": "31-45",
                   "Age46-60": "46-60", "AgeAbove61": "61+"}[k["dominant_age"]]
         line += f", and the biggest age group was {pretty} ({k['dominant_age_pct']:.0f}%)"
-    out.append({"kind": "audience", "label": "Who visits", "text": line + "."})
+    out.append({"kind": "audience", "label": "Composition", "text": line + "."})
 
     zones = doc["distributions"]["zones"]
     top = max(zones, key=lambda z: zones[z]["visitors"])
@@ -348,7 +370,7 @@ def insights(doc):
         share = 100.0 * zones[top]["visitors"] / len(tracks)
         out.append({
             "kind": "layout",
-            "label": "Busiest area",
+            "label": "Spatial concentration",
             "text": f"The {top.lower()} of the camera view drew {share:.0f}% of visitors, "
                     f"who stayed {zones[top]['avg_dwell']:.0f} seconds on average.",
         })
@@ -361,8 +383,19 @@ def insights(doc):
                   "Age46-60": "46-60", "AgeAbove61": "61+"}[longest["age"]]
         out.append({
             "kind": "segment",
-            "label": "Stays longest",
+            "label": "Longest-staying group",
             "text": f"{longest['gender'].capitalize()} visitors aged {pretty} stayed longest "
                     f"({longest['avg']:.0f} seconds on average, {longest['n']} people).",
         })
+
+    z = doc.get("zones")
+    if z and z["summary"].get("seats_tables"):
+        s = z["summary"]
+        kind = ("seats" if all(x["kind"] == "seat" for x in z["zones"]) else
+                "tables" if all(x["kind"] == "table" for x in z["zones"]) else "zones")
+        text = (f"{s['occupied_at_end']} of {s['seats_tables']} {kind} were taken when the recording "
+                f"ended; on average each was taken {100 * s['mean_utilization']:.0f}% of the time")
+        if s["sessions"]:
+            text += f", over {s['sessions']} stays with a median of {s['median_session_sec'] / 60:.1f} minutes"
+        out.append({"kind": "zones", "label": "Zone occupancy", "text": text + "."})
     return out

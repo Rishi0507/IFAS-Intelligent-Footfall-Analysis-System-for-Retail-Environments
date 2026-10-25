@@ -294,6 +294,14 @@ def test_insights_handle_an_empty_run():
     assert len(out) == 1 and out[0]["kind"] == "none"
 
 
+def test_people_in_view_at_the_start_are_not_arrivals():
+    doc = _doc(spread=False)                 # all 60 in view from 0 s
+    doc["timeline"]["bins"] = [{"t": 0.0, "entries": 60}, {"t": 60.0, "entries": 3}]
+    out = {i["kind"]: i for i in insights(doc)}
+    assert "60 of them in view from the start" in out["traffic"]["text"]
+    assert out["staffing"]["window"] == [60.0, 120.0]
+
+
 def test_quiet_footage_does_not_divide_by_zero():
     doc = _doc()
     doc["timeline"]["bins"] = [{"t": 0.0, "entries": 5}, {"t": 60.0, "entries": 0}]

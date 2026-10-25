@@ -72,6 +72,9 @@ class Track:
     first_box: tuple = None           # where the track began; used when a hunch is confirmed
     last_vote_frame: int = -10 ** 9   # gates re-classification; see needs_vote()
     path: list = field(default_factory=list)              # [(frame, cx, cy, area_frac)]
+    # Every observed box at full resolution, so zone occupancy (zones.py) can be
+    # recomputed after the run with other zones or settings, without the models.
+    box_log: list = field(default_factory=list)           # [(frame, x1, y1, x2, y2, conf)]
     # Every vote with the crop's quality cues, for pooling strategies other than
     # the majority vote (src/research/pooling.py). At most `max_votes` long.
     vote_log: list = field(default_factory=list)          # [(gender_probs, age_probs, cues)]
@@ -115,14 +118,53 @@ class Track:
         cx, cy = self.center
         area = (box[2] - box[0]) * (box[3] - box[1])
         self.path.append((frame_idx, round(cx, 1), round(cy, 1), round(area / frame_area, 5)))
+        self.box_log.append((frame_idx, *box, round(det_conf, 3)))
 
-    def needs_vote(self, frame_idx, every, cap):
+    def needs_vote(self, frame_idx, every, cap, spread=False, max_gap=None):
         """A person's gender and age do not change between frames.
 
         Classifying every track on every sampled frame is the pipeline's whole
         cost; a bounded number of spread-out votes gives the same label.
+
+        With `spread`, the gap doubles every four votes (up to `max_gap`), so
+        the votes cover the person's whole stay instead of its first seconds:
+        one awkward angle at the start no longer decides the label for good.
         """
-        return self.n_classified < cap and frame_idx - self.last_vote_frame >= every
+        gap = every
+        if spread:
+            gap = every * (2 ** (self.n_classified // 4))
+            if max_gap:
+                gap = min(gap, max(every, max_gap))
+        return self.n_classified < cap and frame_idx - self.last_vote_frame >= gap
+
+    def recent(self, which, n=6):
+        """(label, confidence) from the last `n` votes only: what the box shows
+        now. If the box ever moves to someone else, this follows; the pooled
+        label over the whole stay does not."""
+        votes = [v[which] for v in self.vote_log[-n:] if v[which]]
+        if not votes:
+            return None, 0.0
+        labels = votes[0].keys()
+        mean = {k: sum(v.get(k, 0.0) for v in votes) / len(votes) for k in labels}
+        top = max(mean, key=mean.get)
+        return top, mean[top]
+
+    def consistent(self, which, min_votes=6, margin=0.25):
+        """False when the first and second halves of the votes confidently name
+        different labels: the box most likely changed hands between two people,
+        and no single label is right for the whole track."""
+        votes = [v[which] for v in self.vote_log if v[which]]
+        if len(votes) < min_votes:
+            return True
+        half = len(votes) // 2
+
+        def lead(part):
+            mean = {k: sum(v.get(k, 0.0) for v in part) / len(part) for k in part[0]}
+            ranked = sorted(mean.items(), key=lambda kv: -kv[1])
+            return ranked[0][0], ranked[0][1] - (ranked[1][1] if len(ranked) > 1 else 0.0)
+
+        (a, ma), (b, mb) = lead(votes[:half]), lead(votes[half:])
+        return a == b or ma < margin or mb < margin
 
     def vote(self, gender_probs=None, age_probs=None, frame_idx=None, cues=None):
         """Accumulate one frame's classifier output. Votes beat any single frame."""
@@ -304,7 +346,8 @@ class IoUTracker:
                       det_conf_sum=conf, confirmed=sure, conf_max=conf, first_box=box,
                       pooling=self.pooling, quality_model=self.quality_model,
                       path=[(frame_idx, round(cx, 1), round(cy, 1),
-                             round(area / frame_area, 5))])
+                             round(area / frame_area, 5))],
+                      box_log=[(frame_idx, *box, round(conf, 3))])
             self.next_id += 1
             self.active.append(t)
             matched.append((t, box, conf))
@@ -338,6 +381,7 @@ class IoUTracker:
         if older is None or older is track or not older.confirmed:
             return track
         older.path.extend(track.path)
+        older.box_log.extend(track.box_log)
         older.frames += track.frames
         older.det_conf_sum += track.det_conf_sum
         older.conf_max = max(older.conf_max, track.conf_max)

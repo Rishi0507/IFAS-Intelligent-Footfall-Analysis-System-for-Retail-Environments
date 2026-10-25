@@ -4,6 +4,8 @@
      heat    one column per heat-map cell, as tall as the time people spent there
      paths   every person's trail across the frame
      people  a marker per person, moving along their trail while the clock runs
+   and, when the run has zones, a fourth from its zone analysis:
+     zones   each table or seat as a floor tile, red while taken, green while free
 
    Time is the fourth dimension. At the end of the recording the columns are at
    full height; scrub back (or replay) and they grow as people stand around. */
@@ -14,6 +16,41 @@ const FLOOR_W = 16;        // world units across; depth follows the frame's aspe
 const MAX_H = 3.3;         // height of the busiest cell
 const RAMP = ['--seq-1', '--seq-2', '--seq-3', '--seq-4', '--seq-5', '--seq-6'];
 const MAX_PEOPLE = 600;
+
+/* Ear clipping: triangle indices for a simple polygon [[x, y], ...], convex
+   or not. Zones have at most 64 corners, so the quadratic search is nothing.
+   (The vendored three.js build leaves out Shape and its triangulator.) */
+export function triangulate(pts) {
+  const n = pts.length;
+  if (n < 3) return [];
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % n];
+    area += x1 * y2 - x2 * y1;
+  }
+  const idx = [...Array(n).keys()];
+  if (area < 0) idx.reverse();                     // work counter-clockwise
+  const cross = (a, b, c) => (pts[b][0] - pts[a][0]) * (pts[c][1] - pts[a][1])
+    - (pts[b][1] - pts[a][1]) * (pts[c][0] - pts[a][0]);
+  const inTri = (p, a, b, c) => cross(a, b, p) >= 0 && cross(b, c, p) >= 0 && cross(c, a, p) >= 0;
+  const out = [];
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 4 * n) {
+    let clipped = false;
+    for (let i = 0; i < idx.length; i++) {
+      const a = idx[(i + idx.length - 1) % idx.length], b = idx[i], c = idx[(i + 1) % idx.length];
+      if (cross(a, b, c) <= 1e-12) continue;       // reflex corner: not an ear
+      if (idx.some((p) => p !== a && p !== b && p !== c && inTri(p, a, b, c))) continue;
+      out.push(a, b, c);
+      idx.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;                           // degenerate: fan the rest
+  }
+  for (let i = 1; i < idx.length - 1; i++) out.push(idx[0], idx[i], idx[i + 1]);
+  return out;
+}
 
 export function createFloor(host, { showTip, hideTip, fmt, describe, insets, onTime, onPlayState }) {
   const stage = makeStage(host, { fov: 30 });
@@ -35,7 +72,7 @@ export function createFloor(host, { showTip, hideTip, fmt, describe, insets, onT
   let t = 0, playing = false, intro = 1;
   let lift = 1;                          // 1 = full columns; near 0 in the top view, where they lie flat
   let mode = 'hero', layout = '3d', touched = false;
-  const layers = { heat: true, paths: true, frame: false };
+  const layers = { heat: true, paths: true, frame: false, zones: true };
   const dummy = new T.Object3D();
   const tmp = new T.Color();
 
@@ -229,10 +266,48 @@ export function createFloor(host, { showTip, hideTip, fmt, describe, insets, onT
       root.add(m);
     });
 
+    // ---- drawn zones (tables, seats, queues), coloured by state as the clock runs
+    const places = [];
+    let rings = [], nextLabel = null;
+    (doc.zones?.zones || []).forEach((z) => {
+      const ring = z.polygon.map(([nx, ny]) => [(nx - 0.5) * FLOOR_W, (ny - 0.5) * depth]);
+      const geo = new T.BufferGeometry();
+      geo.setAttribute('position', new T.Float32BufferAttribute(ring.flatMap(([x, zz]) => [x, 0, zz]), 3));
+      geo.setIndex(triangulate(ring));
+      const tile = new T.Mesh(geo, new T.MeshBasicMaterial({
+        transparent: true, opacity: 0.42, depthWrite: false, side: T.DoubleSide,
+      }));
+      tile.position.y = 0.026;
+      tile.renderOrder = 1;
+      const edge = new T.Line(
+        new T.BufferGeometry().setFromPoints([...ring, ring[0]].map(([x, zz]) => new T.Vector3(x, 0.03, zz))),
+        new T.LineBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false }),
+      );
+      root.add(tile, edge);
+      const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+      const cz = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+      const r = Math.max(0.18, Math.max(...ring.map(([x, zz]) => Math.hypot(x - cx, zz - cz))));
+      places.push({ z, tile, edge, c: new T.Vector3(cx, 0, cz), r });
+    });
+    if (places.length) {
+      // Rings around the zone most likely to free up next, as on the Zones tab.
+      rings = [0, 1, 2].map(() => {
+        const m = new T.Mesh(new T.RingGeometry(0.86, 1, 48), new T.MeshBasicMaterial({
+          transparent: true, depthWrite: false, side: T.DoubleSide,
+        }));
+        m.rotation.x = -Math.PI / 2;
+        m.renderOrder = 2;
+        root.add(m);
+        return m;
+      });
+      nextLabel = stage.label('', new T.Vector3(), { cls: 'strong', ay: '-160%' });
+    }
+
     S = {
       doc, rows, tracks, segs, lineSegs, total, peak, cols, nRows, depth, duration,
       cum: new Float32Array(cols * nRows),
       slab, poster, grid, zones, columns, paths, bodies, discs,
+      places, rings, nextLabel,
       hasPoster: false, colorOf,
       filmUrl: videoUrl || null, filmTex: null, filmCtx: null,
     };
@@ -270,6 +345,8 @@ export function createFloor(host, { showTip, hideTip, fmt, describe, insets, onT
       S.discs.setColorAt(k, tmp);
     });
     [S.bodies, S.discs].forEach((m) => { if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+    S.zc = { free: color('--zone-free'), taken: color('--zone-taken'), next: color('--zone-next'), queue: color('--zone-queue') };
+    S.rings.forEach((m) => m.material.color.copy(S.zc.next));
   }
 
   function applyLayers() {
@@ -277,8 +354,44 @@ export function createFloor(host, { showTip, hideTip, fmt, describe, insets, onT
     S.columns.visible = layers.heat;
     S.paths.visible = layers.paths;
     S.poster.material.visible = layers.frame && S.hasPoster;
+    S.places.forEach((p) => { p.tile.visible = p.edge.visible = layers.zones; });
+    if (!layers.zones) { S.rings.forEach((m) => { m.visible = false; }); if (S.nextLabel) S.nextLabel.hidden = true; }
     syncFilm();
     stage.invalidate();
+  }
+
+  /* Zone tiles at time t: red while taken, green while free, rings on the one
+     taken longest. The rings pulse while the replay runs and rest otherwise. */
+  function applyZones() {
+    if (!S.places.length || !layers.zones) return;
+    let next = null, nextFor = -1;
+    for (const p of S.places) {
+      const cur = p.z.sessions.find((s) => s.start <= t && t < s.end);
+      const queue = p.z.kind === 'queue';
+      const c = queue ? S.zc.queue : cur ? S.zc.taken : S.zc.free;
+      p.tile.material.color.copy(c);
+      p.edge.material.color.copy(c);
+      p.tile.material.opacity = cur ? 0.55 : 0.3;
+      if (cur && !queue && p.z.kind !== 'area' && t - cur.start > nextFor) { next = p; nextFor = t - cur.start; next.cur = cur; }
+    }
+    const phase = playing ? (performance.now() % 1800) / 1800 : 0.2;
+    S.rings.forEach((m, i) => {
+      m.visible = !!next;
+      if (!next) return;
+      const f = (phase + i / 3) % 1;
+      const s = next.r * (1.1 + f * 1.6);
+      m.scale.set(s, s, s);
+      m.position.set(next.c.x, 0.05, next.c.z);
+      m.material.opacity = 0.9 * (1 - f);
+    });
+    if (S.nextLabel) {
+      S.nextLabel.hidden = !next || t >= S.duration - 1e-3;
+      if (next) {
+        S.nextLabel.pos.copy(next.c);
+        const sec = Math.round(nextFor);
+        S.nextLabel.text = `${next.z.id} · ${next.cur.censored_start ? '≥' : ''}${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+      }
+    }
   }
 
   /* ------------------------------------------------------- state at time t */
@@ -337,6 +450,7 @@ export function createFloor(host, { showTip, hideTip, fmt, describe, insets, onT
     });
     bodies.instanceMatrix.needsUpdate = true;
     discs.instanceMatrix.needsUpdate = true;
+    applyZones();
     syncFilm();
     stage.invalidate();
   }
