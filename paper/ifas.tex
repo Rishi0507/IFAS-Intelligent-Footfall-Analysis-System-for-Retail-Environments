@@ -84,7 +84,13 @@ optimistic. We also study how sensitive each model is to its main settings,
 measure the runtime of every stage on a laptop CPU, and run the full pipeline on a
 short shop recording to see where detection and tracking break down and how much
 two additions, rejoining lost tracks and a second detector for weak detections,
-are able to repair.
+are able to repair. On images the models never trained on, and on a lecture-room
+recording labelled for the purpose, the gender model loses accuracy and the age
+SVMs are at chance; averaging the gender network with CLIP used zero-shot, taking
+age from CLIP, spreading each person's votes over their stay and reporting
+``not sure'' below a confidence threshold fixes most of the visible errors.
+Finally, we measure which seats and tables a fixed camera shows as taken, a
+question that needs no identity and holds up where head counts do not.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -137,13 +143,19 @@ The main contributions of this work are:
         follows from them; and
   \item tracker extensions that rejoin people the detector has lost and consult a
         second detector only about weak detections, along with a field check on
-        shop footage showing what each change fixes.
+        shop footage showing what each change fixes;
+  \item a re-evaluation on held-out identities and on labelled CCTV of a crowded
+        room, which traces the visible labelling errors to their causes and
+        replaces the classifiers and voting accordingly; and
+  \item zone occupancy from one fixed camera: which seats and tables are taken,
+        for how long, and which is likely to free up next.
 \end{itemize}
 
 The rest of the paper is organised as follows. Section~\ref{sec:related} reviews
 related work and Section~\ref{sec:system} describes the system.
-Section~\ref{sec:experiments} presents our experiments,
-Section~\ref{sec:discussion} discusses the results and their limitations, and
+Section~\ref{sec:experiments} presents our experiments, Section~\ref{sec:rq4}
+studies zone occupancy, Section~\ref{sec:discussion} discusses the results and
+their limitations, and
 Section~\ref{sec:conclusion} concludes the paper.
 
 % ---------------------------------------------------------------------------
@@ -269,7 +281,7 @@ reads.
   \State ask the second detector about tentative tracks that persist
   \State close each track unmatched for more than $r$ sampled frames
   \For{each track $t$ matched in $f_k$}
-    \If{$t$ is confirmed, has fewer than $m$ votes and its last vote is at least $g$ old}
+    \If{$t$ is confirmed, has $n < m$ votes, its last vote is at least $g\,2^{\lfloor n/4 \rfloor}$ old (capped) and its box overlaps no other by IoU $> 0.3$}
       \State crop $t$ from $f_k$ and classify gender and age
       \State add both probability vectors to the votes of $t$
     \EndIf
@@ -307,6 +319,13 @@ confidence of at least 0.25 then appears within one body height of that spot
 within the next 8\,s, it continues the old track. Near the edges of the frame,
 where people really do leave and arrive, a box rejoins a track only if the earlier
 person was standing still and the new box is in the same place.
+
+In crowded, seated rooms the people at the back are small to a 640-pixel
+detector. There the detector also looks at a $2\times2$ grid of overlapping tiles,
+and boxes are merged by non-maximum suppression~\cite{akyon2022sahi}. Seated
+neighbours' boxes then overlap enough to be confused, so in this mode a box must
+overlap a person's last box by an IoU of 0.5 to continue them
+(Section~\ref{sec:cctv}).
 
 The tracker has no appearance model. This keeps it cheap, but it also has clear
 weaknesses, which are listed in Section~\ref{sec:limits}.
@@ -365,6 +384,12 @@ PETA. Stage~2 repeats them on labelled crops from the target store, with both
 learning rates divided by ten so that the model can adapt to the store without
 forgetting what it learned from PETA. Stage~2 is part of the training code, but we
 do not evaluate it in this paper.
+
+In the current pipeline the network's probabilities are averaged with those of
+CLIP ViT-B/32~\cite{radford2021clip} used zero-shot, which compares a crop's
+embedding with the embeddings of a few prompts such as ``a CCTV image of a man''
+and ``a CCTV image of a woman''. CLIP needs no training and is strongest on large
+CCTV crops, where the fine-tuned network is weakest (Section~\ref{sec:cctv}).
 
 Within each phase the learning rate rises linearly from zero over the first part
 of the phase, a fraction set by the warmup ratio, and then decays to zero along a
@@ -478,12 +503,23 @@ PETA also has a label for people under 15, but there are too few such images to
 train a stable classifier, and our early models underfitted this group every time.
 We therefore left it out.
 
+On identities they never saw, the SVMs turn out to be at chance
+(Section~\ref{sec:cctv}). The pipeline therefore takes age from CLIP zero-shot by
+default, with one prompt set per group (a young person or a student, an adult, a
+middle-aged person, an old person), and keeps the SVMs as an option.
+
 \subsection{Pooling Predictions per Person}
+\label{sec:pooling}
 Any single crop may be blurred or partly hidden, but a person is usually visible
 for many frames, so IFAS classifies each track several times and combines the
-answers. A track is classified at most once every 0.4\,s and at most 12 times in
-total. Spacing the samples out avoids classifying near-identical crops, and the
-cap limits the cost of someone who stays in view for several minutes.
+answers. A track is first classified at most once every 0.4\,s, and the gap
+doubles after every four votes, up to 45\,s, with at most 24 votes in total. The
+votes thus cover the whole stay rather than its first seconds, and the cap
+limits the cost of someone who stays in view for several minutes. In the
+original design the gap stayed at 0.4\,s with at most 12 votes, so all the votes
+of a long stay came from its first five seconds. A crop that overlaps another
+person's box by an IoU above 0.3 is not classified at all, since it shows two
+people.
 
 Each classified crop votes for the label it finds most probable, and the track
 receives the label with the most votes, with ties going to the label with the
@@ -492,6 +528,13 @@ average probability that the crops gave to the winning label. For the age model,
 the SVM decision values are first turned into a distribution with a softmax. This
 puts age confidence in the same 0 to 1 range as gender confidence, but the two are
 not calibrated against each other and should not be compared directly.
+
+A label is only reported when it can be trusted. Below a pooled confidence of 0.6
+for gender or 0.4 for age the person is reported as ``not sure'', and so is a
+person whose votes in the first and second halves of the stay confidently name
+different labels, which happens when a box passes from one person to another.
+The annotated video draws each box with the label of its latest votes, not of
+the whole stay.
 
 \subsection{Analytics and Dashboard}
 For every track IFAS records when the person was first and last seen and the dwell
@@ -532,7 +575,11 @@ The dashboard shows the results at two levels of detail. The simple view, meant 
 the store manager, summarises the findings in plain sentences alongside a few
 headline charts. The detailed view adds filters by gender, age group, dwell tier
 and confidence, a table of every tracked person and the confidence distributions
-of both models.
+of both models. A separate guide explains each recording in plain words for the
+person who runs the place: how busy it was, when people arrived, whether they
+stopped, where they went, how the seats were used and who visited, each with
+suggestions, the numbers behind them and how far they can be trusted. A zones view
+shows the seats and tables of Section~\ref{sec:rq4} on the camera picture.
 
 % ---------------------------------------------------------------------------
 \section{Experiments}
@@ -786,7 +833,7 @@ are shown in Fig.~\ref{fig:runtime}. Detection takes \tDetect\,ms per frame. The
 age model needs \tAge\,ms per crop, of which \tAgeFeat\,ms goes into computing the
 histograms. The gender network takes \tGender\,ms per crop in batches of 16 and
 \tGenderOne\,ms for a single crop, and it accounts for most of the total cost,
-which is why the number of votes is capped. With at most 12 votes, the two
+which is why the number of votes is capped. With the original cap of 12 votes, the two
 classifiers cost under \tPerson\,s per person on this machine however long the
 person stays. Without the cap, a person would be classified up to two and a half
 times for every second they spend in view, so a customer who stayed for a minute
@@ -898,6 +945,11 @@ stayed below 0.45 for everyone. Part of this is due to the softmax over SVM
 decision values, which can give a fairly flat distribution even when one SVM is
 clearly ahead, so these values should not be read as calibrated probabilities.
 
+\input{sections/cctv}
+
+% ---------------------------------------------------------------------------
+\input{sections/rq4}
+
 % ---------------------------------------------------------------------------
 \section{Discussion}
 \label{sec:discussion}
@@ -973,18 +1025,20 @@ afford to run age on every crop and spend most of its compute budget on gender.
 
 \subsection{Limitations}
 \label{sec:limits}
-Apart from the field check, every number in this paper comes from PETA, and the
-field check itself is a single 15\,s clip annotated by eye. Accuracy in a real
-store therefore remains unmeasured. Several other limitations follow from the
-design.
+Apart from the field check and the lecture-room recording, every number in this
+paper comes from PETA. The field check is a single 15\,s clip annotated by eye,
+and the lecture-room labels come from an AI annotator and still have to be
+confirmed by people. Accuracy in a real store therefore remains unmeasured.
+Several other limitations follow from the design.
 \begin{itemize}
   \item Our PETA splits are made at the image level, so some people appear on
         both sides. The reported accuracies are likely to be optimistic for
         unseen customers, and an identity-disjoint split such as that of Jia et
         al.~\cite{jia2021rethinking} should be used in future work.
-  \item The gender results are validation accuracies from short single runs, with
-        the best one chosen on the same validation set. The gender model has no
-        held-out test result yet, and Stage~2 has not been evaluated.
+  \item The training results of the gender model are validation accuracies from
+        short single runs, with the best one chosen on the same validation set.
+        Its held-out results (Section~\ref{sec:cctv}) cover CUHK and one
+        recording, and Stage~2 has not been evaluated.
   \item The tracker does not re-identify people by appearance. Someone who leaves
         the frame and comes back is counted twice, and two people who cross paths
         can swap tracks. The rejoining rule is a heuristic and can merge two people
@@ -998,10 +1052,10 @@ design.
         interest.
   \item The age SVMs were trained at PETA resolution, so small or blurred crops
         receive low-confidence labels, and age confidence is not calibrated.
-  \item Per-track accuracy has not been measured. Pooling helps most when the
-        errors on different frames are independent, but crops of one person taken
-        a fraction of a second apart share lighting and pose, so their errors are
-        likely to be correlated.
+  \item Per-track accuracy has been measured on one recording only, against AI
+        labels. Pooling helps most when the errors on different frames are
+        independent; spreading the votes over the stay reduces, but does not
+        remove, the correlation between crops of one person.
   \item The runtime figures come from one processor and one recording.
 \end{itemize}
 
@@ -1023,11 +1077,19 @@ per person keeps that cost bounded. On a difficult clip from outside PETA,
 rejoining lost tracks and checking weak detections with a second detector raised
 the number of people found from three of five to four of five and brought the
 reported dwell times in line with the footage, although the rules were tuned on
-that same clip.
+that same clip. On images the models never trained on and on a labelled
+lecture-room recording, the picture changes: the gender network loses accuracy,
+the age SVMs are at chance, and the errors visible in the video trace back to
+votes taken in a person's first seconds, tracks passing between seated
+neighbours and crops showing two people. Averaging the network with CLIP used
+zero-shot, taking age from CLIP, spreading the votes and saying ``not sure''
+below a confidence threshold address each of these. Zone occupancy, which needs
+no identity, stays consistent with the people visible even where head counts are
+inflated five-fold.
 
 We see three directions for future work. The first is to label footage from real
-stores and measure per-track accuracy on it, using identity-disjoint splits for
-any retraining. The second is to add re-identification so that returning visitors
+stores with two human annotators and measure per-track accuracy and seat
+occupancy on it, using identity-disjoint splits for any retraining. The second is to add re-identification so that returning visitors
 are counted only once. The third is to run the pipeline on a live camera feed,
 which we have not tested yet.
 

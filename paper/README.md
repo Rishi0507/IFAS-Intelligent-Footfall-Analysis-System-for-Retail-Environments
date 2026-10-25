@@ -4,14 +4,15 @@ The research paper for this project, in IEEE conference format.
 
 | File | What it is |
 | :--- | :--- |
-| `ifas.pdf` | The built paper, ten pages |
-| `ifas.tex` | The source. Diagrams and the algorithm are written in this file |
+| `ifas.pdf` | The built paper. It predates the held-out/CCTV-label subsection and the zone-occupancy section now in `ifas.tex`: rebuild it (below) |
+| `ifas.tex` | The source. Diagrams and the algorithm are written in this file; it inputs `sections/cctv.tex` (Experiments) and `sections/rq4.tex` (zone occupancy) |
 | `refs.bib` | The references, including the ones the research sections cite |
-| `figures/make_figures.py` | Draws all six plots as vector PDFs, plus the RQ figures and `figures/rq3_numbers.tex` once their results exist |
+| `figures/make_figures.py` | Draws all six plots as vector PDFs, plus the RQ figures and the number files `figures/rq3_numbers.tex`, `rq4_numbers.tex` and `attr_numbers.tex` once their results exist |
 | `figures/runtime.json` | Stage timings measured by `scripts/benchmark_stages.py` |
 | `results/` | Research results written by `scripts/research/` (docs/research-plan.md); `make_figures.py` reads them under the `experiment` tag |
-| `sections/` | Person A's sections of the research rewrite (task S3): System, RQ3, Ethics, Limitations |
+| `sections/` | Sections of the research rewrite: System, RQ3, Ethics, Limitations (Person A, task S3); `cctv.tex`, held-out identities and CCTV labels (numbers from `attr_numbers.tex`, written from `attributes.json`, `label_check_before.json`, `identity_gap.json` and `rq1_gap.json`); `rq4.tex`, zone occupancy |
 | `draft_personA.tex`, `.pdf` | Builds those sections on their own. Every RQ3 number comes from `figures/rq3_numbers.tex` and prints as **??** until `rq3_pooling.json` exists |
+| `draft_rq4.tex` | Builds the RQ4 section on its own. Every number comes from `figures/rq4_numbers.tex`, written from `rq4_zones.json` and `rq4_detection.json` |
 
 ## Building
 
@@ -39,7 +40,7 @@ at the top of `figures/make_figures.py` with one of four source tags.
 | `plot` | Read back from the original plot images in that folder | About a dozen points that are not written in the notes. Reading error is about 0.0003 on the accuracy axes |
 | `notebook` | Stored outputs of `age_classifier_v3.ipynb` | Age data counts, the split, validation and test mA, precision, recall and the confusion matrix |
 | `runtime` | `scripts/benchmark_stages.py` | The timing figure and the numbers in Section IV-F |
-| `experiment` | `paper/results/*.json`, written by `scripts/research/` | The RQ1-RQ3 figures, drawn only once their results files exist |
+| `experiment` | `paper/results/*.json`, written by `scripts/research/` | The RQ1-RQ4 figures and every number the research sections quote, written only once their results files exist |
 
 To redraw the plots:
 

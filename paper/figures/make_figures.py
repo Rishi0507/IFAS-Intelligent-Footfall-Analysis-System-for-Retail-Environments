@@ -13,9 +13,9 @@ Sources
               error of the image (about 0.0003 on the accuracy axes).
     notebook  printed in the stored outputs of age_classifier_v3.ipynb
     runtime   measured by scripts/benchmark_stages.py and saved in runtime.json
-    experiment  paper/results/rq1_gap.json, rq2_adaptation.json and rq3_pooling.json,
-              written by scripts/research/ (docs/research-plan.md). Each of these
-              figures is drawn only once its results file exists.
+    experiment  paper/results/rq1_gap.json, rq2_adaptation.json, rq3_pooling.json and
+              rq4_zones.json, written by scripts/research/ (docs/research-plan.md).
+              Each of these figures is drawn only once its results file exists.
 """
 import json
 import math
@@ -532,6 +532,215 @@ def rq3_numbers(results=RESULTS, out=OUT):
     (out / "rq3_numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def rq4(results=RESULTS, out=OUT):
+    doc = _results("rq4_zones.json", results)
+    if not doc:
+        return
+    rows = doc["rows"]
+    base = doc["meta"]["base_params"]
+    fig = plt.figure(figsize=(7.16, 2.15))
+    gs = fig.add_gridspec(1, 4, width_ratios=[1.15, 1.0, 0.95, 1.05], wspace=0.5,
+                          left=0.06, right=0.995, top=0.85, bottom=0.25)
+
+    # (a) flicker against the gap bridged, with and without dropping short stays.
+    ax = fig.add_subplot(gs[0])
+    sm = [r for r in rows if r["study"] == "smoothing"]
+    offs = sorted({r["off_sec"] for r in sm})
+    raw = sm[0]["raw_flips_per_min"]
+    ax.axhline(raw, color=GREY, lw=0.8, ls="--", zorder=1)
+    ax.annotate("raw", (offs[-1], raw), xytext=(0, 2), textcoords="offset points",
+                ha="right", va="bottom", color=GREY, fontsize=6.6)
+    for on, colour in ((0.0, WARM), (base["on_sec"], PICK)):
+        ys = [next(r["smoothed_flips_per_min"] for r in sm if r["on_sec"] == on and r["off_sec"] == o)
+              for o in offs]
+        ax.plot(offs, ys, "-o", color=colour, lw=1.1, ms=3.2, mfc="white", mew=0.9,
+                label=f"drop stays < {on:g} s" if on else "keep every stay")
+        if on == base["on_sec"]:
+            v = ys[offs.index(base["off_sec"])]
+            ax.plot(base["off_sec"], v, "o", ms=4.2, color=PICK, zorder=4)
+            ax.annotate(f"{v:.2f}", (base["off_sec"], v), xytext=(4, 4), textcoords="offset points",
+                        color=PICK, fontweight="bold", fontsize=7)
+    ax.set_yscale("log")
+    ticks = [0.3, 1, 3, 10]
+    ax.set_yticks(ticks, [f"{t:g}" for t in ticks])
+    ax.minorticks_off()
+    ax.set_xlabel("Gaps bridged up to (s)")
+    ax.set_ylabel("State changes per zone-minute")
+    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 0.9), frameon=False, fontsize=6.2,
+              handlelength=1.4)
+    tag(ax, "a", "Smoothing")
+
+    # (b) agreement with the full sampling rate.
+    ax = fig.add_subplot(gs[1])
+    sa = sorted((r for r in rows if r["study"] == "sampling"), key=lambda r: r["sample_sec"])
+    xs = [r["sample_sec"] for r in sa]
+    ys = [100 * r["state_agreement"] for r in sa]
+    ax.plot(xs, ys, "-o", color=PICK, lw=1.1, ms=3.2, mfc="white", mew=0.9)
+    for x, y in zip(xs[1:], ys[1:]):
+        ax.annotate(f"{y:.1f}", (x, y), xytext=(0, 5), textcoords="offset points", ha="center",
+                    fontsize=6.4)
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(xs, [f"{x:g}" for x in xs])
+    ax.minorticks_off()
+    ax.set_ylim(min(ys) - 3, 101.5)
+    ax.set_xlabel("Seconds between samples")
+    ax.set_ylabel("Same state as full rate (%)")
+    tag(ax, "b", "Sampling")
+
+    # (c) where a person "is": sightings that fall in no zone.
+    ax = fig.add_subplot(gs[2])
+    an = [r for r in rows if r["study"] == "anchor"]
+    names = [r["anchor"] for r in an]
+    vals = [100 * r["unassigned_share"] for r in an]
+    for i, (n, v) in enumerate(zip(names, vals)):
+        chosen = n == base["anchor"]
+        ax.barh(i, v, height=0.56, color=PICK if chosen else GREY, zorder=2)
+        ax.annotate(f"{v:.1f}%", (v, i), xytext=(3, 0), textcoords="offset points", va="center",
+                    fontsize=6.6, color=INK, fontweight="bold" if chosen else None)
+    ax.set_yticks(range(len(names)), names)
+    ax.invert_yaxis()
+    ax.set_xlim(0, max(vals) * 1.4)
+    ax.grid(axis="y", visible=False)
+    ax.grid(axis="x", visible=True)
+    ax.set_xlabel("Sightings in no zone (%)")
+    tag(ax, "c", "Anchor")
+
+    # (d) identity: tracks against people seated.
+    ax = fig.add_subplot(gs[3])
+    idr = next(r for r in rows if r["study"] == "identity")
+    bars = [("Tracks", idr["tracks"], WARM), ("In view\n(peak)", idr["peak_people_in_frame"], PICK),
+            ("Seats\n(peak)", idr["peak_occupied_zones"], PICK),
+            ("Seats\n(end)", idr["occupied_at_end"], PICK)]
+    for i, (_n, v, c) in enumerate(bars):
+        ax.bar(i, v, width=0.62, color=c, zorder=2)
+        ax.annotate(f"{v}", (i, v), xytext=(0, 2), textcoords="offset points", ha="center",
+                    fontsize=6.8)
+    ax.set_xticks(range(len(bars)), [b[0] for b in bars], fontsize=6.2)
+    ax.set_ylim(0, idr["tracks"] * 1.15)
+    ax.set_ylabel("Count")
+    tag(ax, "d", "Identity")
+    fig.savefig(out / "rq4_zones.pdf")
+    plt.close(fig)
+
+
+def rq4_numbers(results=RESULTS, out=OUT):
+    r"""paper/figures/rq4_numbers.tex: every RQ4 number the text quotes, as
+    \rqfour{key}. Missing numbers print as ?? in the PDF."""
+    doc = _results("rq4_zones.json", results)
+    lines = ["% Written by make_figures.py from results/rq4_zones.json. Do not edit."]
+    if doc:
+        def put(key, val):
+            lines.append(f"\\expandafter\\def\\csname rq4/{key}\\endcsname{{{val}}}")
+
+        m, rows = doc["meta"], doc["rows"]
+        bp = m["base_params"]
+        put("duration-min", f"{m['duration_sec'] / 60:.1f}")
+        put("zones", m["zones"])
+        put("zone-source", "proposed automatically" if m.get("zone_source") == "auto" else "drawn by hand")
+        put("sample-sec", f"{m['sample_sec']:.1f}")
+        for k in ("on_sec", "off_sec", "stick"):
+            put(k.replace("_", "-"), f"{bp[k]:g}")
+        base = next(r for r in rows if r["study"] == "smoothing"
+                    and r["on_sec"] == bp["on_sec"] and r["off_sec"] == bp["off_sec"])
+        put("raw-flicker", f"{base['raw_flips_per_min']:.2f}")
+        put("flicker", f"{base['smoothed_flips_per_min']:.2f}")
+        put("flicker-ratio", f"{base['raw_flips_per_min'] / base['smoothed_flips_per_min']:.0f}")
+        put("utilisation", f"{100 * base['mean_utilization']:.0f}")
+        put("stays", base["sessions"])
+        put("median-stay", f"{base['median_session_sec']:.0f}")
+        put("unassigned", f"{100 * base['unassigned_share']:.1f}")
+        put("occupied", f"{base['mean_occupied']:.1f}")
+        loose = next((r for r in rows if r["study"] == "stick" and r["stick"] == 0), None)
+        if loose:
+            put("raw-flicker-nostick", f"{loose['raw_flips_per_min']:.2f}")
+            put("stick-cut", f"{100 * (1 - base['raw_flips_per_min'] / loose['raw_flips_per_min']):.0f}")
+            put("occupied-nostick", f"{loose['mean_occupied']:.1f}")
+        for r in rows:
+            if r["study"] == "anchor":
+                put(f"unassigned-{r['anchor']}", f"{100 * r['unassigned_share']:.1f}")
+            if r["study"] == "sampling" and r["factor"] > 1:
+                put(f"agree-{r['sample_sec']:g}", f"{100 * r['state_agreement']:.1f}")
+                put(f"utilerr-{r['sample_sec']:g}", f"{100 * r['utilization_abs_err']:.1f}")
+            if r["study"] == "proposal":
+                put(f"proposal-{r['min_evidence_sec']:g}", r["zones"])
+            if r["study"] == "identity":
+                for k in ("tracks", "peak_people_in_frame", "peak_occupied_zones", "occupied_at_end",
+                          "tracks_per_person", "tracks_rejoined"):
+                    put(k.replace("_", "-"), r[k])
+            if r["study"] == "labels" and r.get("base"):
+                b = r["base"]
+                put("lab-annotators", ", ".join(r["annotators"]))
+                put("lab-items", b["items"])
+                put("lab-unsure", b["unsure"])
+                put("lab-moments", b["moments"])
+                put("lab-base-rate", f"{100 * b['base_rate_taken']:.0f}")
+                put("lab-kappa", f"{b['kappa']:.2f}")
+                for k in ("accuracy", "precision", "recall", "f1"):
+                    put(f"lab-{k}", f"{b[k]['value']:.2f} [{b[k]['lo']:.2f}, {b[k]['hi']:.2f}]")
+            if r["study"] == "smoothing" and r.get("labels") and r["on_sec"] == bp["on_sec"]:
+                put(f"lab-recall-off{r['off_sec']:g}", f"{r['labels']['recall']['value']:.2f}")
+                put(f"lab-precision-off{r['off_sec']:g}", f"{r['labels']['precision']['value']:.2f}")
+            if r["study"] == "next_free" and r.get("moments"):
+                put("nf-moments", r["moments"])
+                for k in ("longest_seated", "km_residual", "random"):
+                    put(f"nf-{k.replace('_', '-')}", f"{r[k]:.3f}")
+        lines.append(f"\\def\\rqfourCommit{{{m.get('commit', '')}}}")
+    det = _results("rq4_detection.json", results)
+    if det:
+        lines.append(f"\\expandafter\\def\\csname rq4/det-frames\\endcsname{{{len(det['meta']['frames'])}}}")
+        for r in det["rows"]:
+            key = f"det/{r['model']}/{r['tiles']}"
+            lines.append(f"\\expandafter\\def\\csname rq4/{key}/{r['conf']:g}\\endcsname{{{r['mean']:.1f}}}")
+            lines.append(f"\\expandafter\\def\\csname rq4/{key}/sec\\endcsname{{{r['sec_per_frame']:.2f}}}")
+    (out / "rq4_numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def attr_numbers(results=RESULTS, out=OUT):
+    r"""paper/figures/attr_numbers.tex: every number the held-out and CCTV-label
+    section quotes, as \attr{key}, from attributes.json, label_check_before.json,
+    identity_gap.json and rq1_gap.json. Missing numbers print as ??."""
+    lines = ["% Written by make_figures.py from results/attributes.json, label_check_before.json,",
+             "% identity_gap.json and rq1_gap.json. Do not edit."]
+
+    def put(key, val):
+        lines.append(f"\\expandafter\\def\\csname attr/{key}\\endcsname{{{val}}}")
+
+    def f3(x):
+        return f"{x:.3f}" if isinstance(x, (int, float)) else "??"
+
+    att = _results("attributes.json", results)
+    if att:
+        for r in att["rows"]:
+            data = {"PETA test": "peta", "PETA CUHK test": "cuhk"}.get(r["data"], "room")
+            key = f"{r['task']}/{data}/{r['model']}"
+            put(f"{key}/acc", f3(r["accuracy"]))
+            put(f"{key}/bal", f3(r["balanced"]))
+            put(f"{key}/n", r["n"])
+            for c in r.get("coverage") or []:
+                th = f"{c['min_conf']:g}"
+                put(f"{key}/kept{th}", f"{100 * c['kept']:.0f}" if c["kept"] is not None else "??")
+                put(f"{key}/acc{th}", f"{100 * c['accuracy']:.1f}" if c["accuracy"] is not None else "??")
+    before = _results("label_check_before.json", results)
+    if before:
+        for r in before["rows"]:
+            a = r["accuracy"]
+            put(f"before/{r['task']}", f"{a['value']:.3f} [{a['lo']:.3f}, {a['hi']:.3f}]")
+            put(f"before/{r['task']}/n", r["people_labelled"])
+    gap = _results("identity_gap.json", results)
+    if gap:
+        row = next(x for x in gap["rows"] if x["iou"] == 0.5)
+        put("gap/same05", f"{100 * row['same_person_kept']:.1f}")
+        put("gap/neighbour05", f"{100 * row['neighbour_pairs_at_or_above']:.1f}")
+        put("gap/neighbour99", f"{gap['neighbours']['percentiles']['99']:.2f}")
+        put("gap/neighbour03", f"{100 * next(x for x in gap['rows'] if x['iou'] == 0.3)['neighbour_pairs_at_or_above']:.0f}")
+    rq1 = _results("rq1_gap.json", results)
+    if rq1:
+        for r in rq1["rows"]:
+            if r.get("task") == "age" and r.get("balanced_accuracy"):
+                put("age/cuhk/svm/bal", f3(r["balanced_accuracy"]["value"]))
+    (out / "attr_numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 if __name__ == "__main__":
     gender()
     age_sensitivity()
@@ -543,4 +752,7 @@ if __name__ == "__main__":
     rq2()
     rq3()
     rq3_numbers()
+    rq4()
+    rq4_numbers()
+    attr_numbers()
     print("wrote", ", ".join(p.name for p in sorted(OUT.glob("*.pdf"))))

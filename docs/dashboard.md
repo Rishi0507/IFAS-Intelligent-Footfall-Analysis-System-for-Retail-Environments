@@ -70,11 +70,30 @@ python -m src.inference.pipeline \
 | `--bin-sec` | `5` | Timeline bin width |
 | `--max-frames` | – | Stop early; useful for a smoke test |
 | `--no-video` | off | Analytics only, no MP4 re-encode |
+| `--tiles` | off | Also detect on overlapping tiles, e.g. `2x2`. Needed in crowded, seated rooms where people are small; about 4x the detection time |
+| `--imgsz` | the model's | Detector input size |
+| `--zones` | – | A zones file (seats, tables, queues). Without it, seats are proposed from where people sat still |
+| `--no-auto-zones` | off | Without `--zones`, do not propose seats |
+| `--export-crops` | off | Save every classified crop and `crops.jsonl`, for labelling and research |
+| `--site` / `--camera` | – | Where the footage is from. Periods group by these, and a camera's saved zones are reused |
+| `--captured-at` | see below | When the footage was recorded |
+| `--attributes` | `ensemble` | `ensemble`: gender from the ViT (`--gender-repo`) averaged with CLIP zero-shot, age from CLIP; `clip`: CLIP for both; `vit`: the ViT and the age SVMs (`--age-bundle`). See [research-plan.md](research-plan.md) §10 for why |
+| `--min-gender-conf` / `--min-age-conf` | `0.6` / `0.4` | Below these a person's gender / age group is reported as "not sure" instead of guessed |
+| `--max-votes`, `--max-vote-gap-sec` | `24`, `45` | Votes are spread over the whole stay: the gap doubles every four votes, up to the cap. `--no-vote-spread` goes back to a fixed pace |
+| `--max-vote-overlap` | `0.3` | No vote on a crop that overlaps another person's box by more (IoU): it shows two people |
+| `--match-iou` | 0.5 with `--tiles`, else 0.3 | How much a box must overlap a person's last box to continue them; seated neighbours overlap by up to ~0.5 |
 
 Either classifier may be omitted - run gender-only or age-only and the
 dashboard simply shows fewer filled fields.
 
 ### Running the age model
+
+By default (`--attributes ensemble`, and in the dashboard's upload dialog) age
+comes from CLIP zero-shot and no bundle is needed; CLIP is downloaded once from
+the Hub (`openai/clip-vit-base-patch32`, about 600 MB) and cached. The original
+colour/texture SVMs are used with `--attributes vit`, which is what the rest of
+this section is about. They are at chance on held-out identities
+([research-plan.md](research-plan.md) §10), so prefer the default.
 
 The trained SVMs are on the Hub at
 [`abhshkp/footfall-analysis-age-svm`](https://huggingface.co/abhshkp/footfall-analysis-age-svm)
@@ -84,7 +103,7 @@ checkpoint), then loaded from there without touching the network:
 
 ```bash
 pip install scikit-image        # the LBP texture features need it
-python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm
+python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm --attributes vit
 ```
 
 The Hub bundle is self-contained. Besides `classifiers` and `configs` it
@@ -102,8 +121,8 @@ defaults in `models.py`, which must then match the notebook run that trained
 them.
 
 In the dashboard's **Process video** dialog the *Age model* field takes the
-same values and defaults to the Hub repo. Age is optional: clear the field and
-the pipeline still runs and the age panels say so instead of showing empty charts.
+same values and defaults to the Hub repo; it is only used when the run asks for
+`attributes=vit`. Uploads otherwise use the default ensemble.
 
 The feature vector is 550 numbers per crop (5 body regions x (5 colour
 histograms x 16 bins + 3 LBP radii x 10 bins)). If your bundle was trained with
@@ -120,9 +139,14 @@ outputs/runs/<run-id>/
 ├── analytics.json    # the whole record - the dashboard reads only this
 ├── video.mp4         # annotated output (unless --no-video)
 ├── poster.jpg        # first frame, used as the video poster
+├── track_boxes.json  # every tracked person's boxes, so zones can be recomputed without a model
+├── zones.json        # the zones the run was analysed with (drawn, reused or proposed)
+├── frames/           # a clean frame every 30 s, for the zone labelling page
 ├── crops.jsonl       # with --export-crops: one line per classified crop
 ├── crops/<track>/    # with --export-crops: the crops themselves
-└── labels_<name>.json  # written by the labelling page, one per annotator
+├── labels_<name>.json       # written by the labelling page, one per annotator
+├── zone_labels_<name>.json  # written by the zone labelling page, one per annotator
+└── crops.clip_vitb32.npz    # research: cached CLIP embeddings of the crops
 ```
 
 Drop any such directory under `outputs/runs/` and it appears in the run picker.
@@ -160,6 +184,13 @@ the file (a notebook, a BI tool, a report).
 | `heatmap` | normalised position density grid over the frame |
 | `tracks` | one record per person: id, gender + confidence + vote counts, age + confidence + vote counts, first/last second, dwell, tier, frames, detection confidence, mean box area, entry/exit edge, path type, zone, subsampled trail |
 | `model` | model families, checkpoint ids, the age model's reported mA |
+| `insights` | plain-language findings, each with its sample size and, for shares, a 95% Wilson interval |
+| `guide` | the Guide tab: what kind of place it is, and sections (how busy, arrivals, stopping, where, seats, waits, who, trust) each with a headline, an explanation, suggestions, the numbers behind it and a confidence (solid / rough / unreliable) with the reason. Older runs get one from `GET /api/runs/{id}/guide` |
+| `zones` | per zone: polygon, kind, stays, utilisation, turnover; events (taken, freed, long stay, queue wait); a Kaplan-Meier survival curve; the next place to free up and how well that rule did; the label-free checks. See [zones.md](zones.md) |
+
+Each track also carries `gender_unsure` / `age_unsure`: null when the label stands, else why it
+was left out ("low confidence", or "votes disagree" when the first and second halves of the stay
+name different labels, which happens when a box passes from one person to another).
 
 Two derived fields worth knowing:
 
@@ -229,8 +260,11 @@ Every period is grouped by when the footage was *recorded*, not processed. The
 pipeline stores `meta.captured_at`, taken from:
 
 1. `--captured-at "2026-09-05T14:30"` (or the **Recorded on** dialog field), else
-2. the video file's own timestamp, which is what camera exports carry, else
-3. the time of processing.
+2. the recording start in a recorder's export name (`..._20260914_165019_170000_...avi`), else
+3. the video file's own timestamp, else
+4. the time of processing.
+
+`meta.captured_from` says which one it was.
 
 ### Building history
 
@@ -250,14 +284,16 @@ MP4, which is much faster for bulk history.
 
 ## Finding your way around
 
-The dashboard is six tabs in a glass bar at the top of the page. On a phone the
-tabs move to the bottom of the screen, within reach of a thumb. Keys `1` to `6`
+The dashboard is eight tabs in a glass bar at the top of the page. On a phone the
+tabs move to the bottom of the screen, within reach of a thumb. Keys `1` to `8`
 jump between them and the address bar keeps the tab (`#floor`), so a link opens
 on the right one.
 
 | Tab | What it answers |
 | :--- | :--- |
 | **Overview** | What happened, in one sentence and four numbers, over a 3D picture of the floor |
+| **Guide** | The same recording in plain words for the owner, with what to try and how far to trust each number |
+| **Zones** | Which seats and tables are taken, for how long, and which frees up next; the zone editor ([zones.md](zones.md)) |
 | **Floor** | Where people stood and how they moved |
 | **People** | Who came in, by age and gender, and how long each group stayed |
 | **Trends** | How this recording compares with the others |
@@ -362,7 +398,10 @@ occupancy" becomes "Most at once", "Average dwell" becomes "Typical visit".
 
 Browsers only play H.264. The pipeline asks OpenCV for `avc1` first; if that
 build has no H.264 encoder it writes MPEG-4 and then transcodes with `ffmpeg`
-when `ffmpeg` is on PATH. With neither available the MP4 is still written (and
+when `ffmpeg` is on PATH. OpenCV's own H.264 writer on Windows produces about
+40 Mbit/s at 1080p (3.1 GB for ten minutes), far too heavy to scrub in a
+browser, so any file above 8 Mbit/s is re-encoded too (CRF 23, about 4 Mbit/s,
+with the index at the front for instant seeking). With neither available the MP4 is still written (and
 plays in VLC), the codec is recorded in `meta.video_codec`, and the dashboard
 shows a badge over the player saying so.
 

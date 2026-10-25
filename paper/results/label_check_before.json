@@ -1,0 +1,113 @@
+{
+ "meta": {
+  "commit": "0ea3f88",
+  "date": "2026-10-25T17:29:46",
+  "models": [
+   "abhshkp/footfall-analysis-vit-stage2",
+   "abhshkp/footfall-analysis-age-svm"
+  ],
+  "seeds": [],
+  "run": "djsce-cr22-2026-09-14",
+  "annotator": "claude-ai",
+  "config": {
+   "attributes": null,
+   "min_gender_conf": null,
+   "min_age_conf": null,
+   "vote_spread": null,
+   "max_votes_per_person": 12,
+   "match_iou": null,
+   "max_vote_overlap": null,
+   "detector": "yolov8n.pt",
+   "tiles": "2x2",
+   "stride": null
+  }
+ },
+ "rows": [
+  {
+   "run": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "gender",
+   "people_labelled": 167,
+   "annotator_unsure": 64,
+   "coverage": 1.0,
+   "accuracy": {
+    "value": 0.8204,
+    "lo": 0.7605,
+    "hi": 0.8743,
+    "n": 167
+   },
+   "balanced": {
+    "value": 0.7278,
+    "lo": 0.6506,
+    "hi": 0.8013,
+    "n": 167
+   },
+   "confusion": [
+    {
+     "truth": "female",
+     "answer": "female",
+     "n": 24
+    },
+    {
+     "truth": "female",
+     "answer": "male",
+     "n": 22
+    },
+    {
+     "truth": "male",
+     "answer": "female",
+     "n": 8
+    },
+    {
+     "truth": "male",
+     "answer": "male",
+     "n": 113
+    }
+   ],
+   "unsure_why": {}
+  },
+  {
+   "run": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "age",
+   "people_labelled": 174,
+   "annotator_unsure": 57,
+   "coverage": 1.0,
+   "accuracy": {
+    "value": 0.523,
+    "lo": 0.4425,
+    "hi": 0.592,
+    "n": 174
+   },
+   "balanced": {
+    "value": 0.523,
+    "lo": 0.4425,
+    "hi": 0.592,
+    "n": 174
+   },
+   "confusion": [
+    {
+     "truth": "Age16-30",
+     "answer": "Age16-30",
+     "n": 91
+    },
+    {
+     "truth": "Age16-30",
+     "answer": "Age31-45",
+     "n": 67
+    },
+    {
+     "truth": "Age16-30",
+     "answer": "Age46-60",
+     "n": 7
+    },
+    {
+     "truth": "Age16-30",
+     "answer": "AgeAbove61",
+     "n": 9
+    }
+   ],
+   "unsure_why": {}
+  }
+ ]
+}

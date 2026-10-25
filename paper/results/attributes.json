@@ -1,0 +1,400 @@
+{
+ "meta": {
+  "commit": "2eaf892",
+  "date": "2026-10-25T17:11:20",
+  "models": [
+   "openai/clip-vit-base-patch32",
+   "abhshkp/footfall-analysis-vit-stage1 (PETA)",
+   "crops.jsonl predictions (runs)"
+  ],
+  "seeds": [],
+  "prompts": {
+   "gender": {
+    "female": [
+     "a CCTV image of a woman",
+     "a surveillance camera image of a woman",
+     "a low resolution photo of a woman"
+    ],
+    "male": [
+     "a CCTV image of a man",
+     "a surveillance camera image of a man",
+     "a low resolution photo of a man"
+    ]
+   },
+   "age": {
+    "Age16-30": [
+     "a photo of a young person",
+     "a photo of a student"
+    ],
+    "Age31-45": [
+     "a photo of an adult"
+    ],
+    "Age46-60": [
+     "a photo of a middle-aged person"
+    ],
+    "AgeAbove61": [
+     "a photo of an old person"
+    ]
+   }
+  },
+  "annotator": "claude-ai",
+  "runs": [
+   "djsce-cr22-2026-09-14"
+  ]
+ },
+ "rows": [
+  {
+   "data": "PETA test",
+   "task": "gender",
+   "model": "clip",
+   "n": 1501,
+   "accuracy": 0.6622,
+   "balanced": 0.6588
+  },
+  {
+   "data": "PETA CUHK test",
+   "task": "gender",
+   "model": "vit",
+   "n": 358,
+   "accuracy": 0.9022,
+   "balanced": 0.8748
+  },
+  {
+   "data": "PETA CUHK test",
+   "task": "gender",
+   "model": "clip",
+   "n": 358,
+   "accuracy": 0.7235,
+   "balanced": 0.7652
+  },
+  {
+   "data": "PETA CUHK test",
+   "task": "gender",
+   "model": "ensemble",
+   "n": 358,
+   "accuracy": 0.9022,
+   "balanced": 0.8879
+  },
+  {
+   "data": "PETA test",
+   "task": "age",
+   "model": "clip",
+   "n": 1485,
+   "accuracy": 0.4013,
+   "balanced": 0.3607
+  },
+  {
+   "data": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "gender",
+   "model": "vit",
+   "n": 167,
+   "accuracy": 0.8204,
+   "balanced": 0.7278,
+   "predicted": {
+    "female": 32,
+    "male": 135
+   },
+   "truth": {
+    "female": 46,
+    "male": 121
+   },
+   "coverage": [
+    {
+     "min_conf": 0.0,
+     "kept": 1.0,
+     "accuracy": 0.8204,
+     "balanced": 0.7278
+    },
+    {
+     "min_conf": 0.4,
+     "kept": 1.0,
+     "accuracy": 0.8204,
+     "balanced": 0.7278
+    },
+    {
+     "min_conf": 0.5,
+     "kept": 1.0,
+     "accuracy": 0.8204,
+     "balanced": 0.7278
+    },
+    {
+     "min_conf": 0.55,
+     "kept": 0.9641,
+     "accuracy": 0.8199,
+     "balanced": 0.7201
+    },
+    {
+     "min_conf": 0.6,
+     "kept": 0.9102,
+     "accuracy": 0.8289,
+     "balanced": 0.7214
+    },
+    {
+     "min_conf": 0.65,
+     "kept": 0.8383,
+     "accuracy": 0.8357,
+     "balanced": 0.7017
+    },
+    {
+     "min_conf": 0.7,
+     "kept": 0.7725,
+     "accuracy": 0.8605,
+     "balanced": 0.7264
+    }
+   ]
+  },
+  {
+   "data": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "gender",
+   "model": "clip",
+   "n": 167,
+   "accuracy": 0.8383,
+   "balanced": 0.8413,
+   "predicted": {
+    "female": 59,
+    "male": 108
+   },
+   "truth": {
+    "female": 46,
+    "male": 121
+   },
+   "coverage": [
+    {
+     "min_conf": 0.0,
+     "kept": 1.0,
+     "accuracy": 0.8383,
+     "balanced": 0.8413
+    },
+    {
+     "min_conf": 0.4,
+     "kept": 1.0,
+     "accuracy": 0.8383,
+     "balanced": 0.8413
+    },
+    {
+     "min_conf": 0.5,
+     "kept": 1.0,
+     "accuracy": 0.8383,
+     "balanced": 0.8413
+    },
+    {
+     "min_conf": 0.55,
+     "kept": 0.8922,
+     "accuracy": 0.8725,
+     "balanced": 0.8666
+    },
+    {
+     "min_conf": 0.6,
+     "kept": 0.7425,
+     "accuracy": 0.9194,
+     "balanced": 0.9178
+    },
+    {
+     "min_conf": 0.65,
+     "kept": 0.6287,
+     "accuracy": 0.9714,
+     "balanced": 0.9704
+    },
+    {
+     "min_conf": 0.7,
+     "kept": 0.509,
+     "accuracy": 0.9765,
+     "balanced": 0.9723
+    }
+   ]
+  },
+  {
+   "data": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "gender",
+   "model": "ensemble",
+   "n": 167,
+   "accuracy": 0.8743,
+   "balanced": 0.8054,
+   "predicted": {
+    "female": 35,
+    "male": 132
+   },
+   "truth": {
+    "female": 46,
+    "male": 121
+   },
+   "coverage": [
+    {
+     "min_conf": 0.0,
+     "kept": 1.0,
+     "accuracy": 0.8743,
+     "balanced": 0.8054
+    },
+    {
+     "min_conf": 0.4,
+     "kept": 1.0,
+     "accuracy": 0.8743,
+     "balanced": 0.8054
+    },
+    {
+     "min_conf": 0.5,
+     "kept": 1.0,
+     "accuracy": 0.8743,
+     "balanced": 0.8054
+    },
+    {
+     "min_conf": 0.55,
+     "kept": 0.9281,
+     "accuracy": 0.8903,
+     "balanced": 0.8119
+    },
+    {
+     "min_conf": 0.6,
+     "kept": 0.8204,
+     "accuracy": 0.927,
+     "balanced": 0.8453
+    },
+    {
+     "min_conf": 0.65,
+     "kept": 0.7066,
+     "accuracy": 0.9576,
+     "balanced": 0.8958
+    },
+    {
+     "min_conf": 0.7,
+     "kept": 0.6347,
+     "accuracy": 0.9717,
+     "balanced": 0.9286
+    }
+   ]
+  },
+  {
+   "data": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "age",
+   "model": "svm",
+   "n": 174,
+   "accuracy": 0.5287,
+   "balanced": 0.5287,
+   "predicted": {
+    "Age16-30": 92,
+    "Age31-45": 66,
+    "Age46-60": 7,
+    "AgeAbove61": 9
+   },
+   "truth": {
+    "Age16-30": 174,
+    "Age31-45": 0,
+    "Age46-60": 0,
+    "AgeAbove61": 0
+   },
+   "coverage": [
+    {
+     "min_conf": 0.0,
+     "kept": 1.0,
+     "accuracy": 0.5287,
+     "balanced": 0.5287
+    },
+    {
+     "min_conf": 0.4,
+     "kept": 0.6379,
+     "accuracy": 0.5495,
+     "balanced": 0.5495
+    },
+    {
+     "min_conf": 0.5,
+     "kept": 0.3276,
+     "accuracy": 0.4912,
+     "balanced": 0.4912
+    },
+    {
+     "min_conf": 0.55,
+     "kept": 0.2299,
+     "accuracy": 0.475,
+     "balanced": 0.475
+    },
+    {
+     "min_conf": 0.6,
+     "kept": 0.1379,
+     "accuracy": 0.4167,
+     "balanced": 0.4167
+    },
+    {
+     "min_conf": 0.65,
+     "kept": 0.0805,
+     "accuracy": 0.3571,
+     "balanced": 0.3571
+    },
+    {
+     "min_conf": 0.7,
+     "kept": 0.023,
+     "accuracy": 0.25,
+     "balanced": 0.25
+    }
+   ]
+  },
+  {
+   "data": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "age",
+   "model": "clip",
+   "n": 174,
+   "accuracy": 0.8276,
+   "balanced": 0.8276,
+   "predicted": {
+    "Age16-30": 144,
+    "Age31-45": 0,
+    "Age46-60": 9,
+    "AgeAbove61": 21
+   },
+   "truth": {
+    "Age16-30": 174,
+    "Age31-45": 0,
+    "Age46-60": 0,
+    "AgeAbove61": 0
+   },
+   "coverage": [
+    {
+     "min_conf": 0.0,
+     "kept": 1.0,
+     "accuracy": 0.8276,
+     "balanced": 0.8276
+    },
+    {
+     "min_conf": 0.4,
+     "kept": 0.7184,
+     "accuracy": 0.976,
+     "balanced": 0.976
+    },
+    {
+     "min_conf": 0.5,
+     "kept": 0.4598,
+     "accuracy": 1.0,
+     "balanced": 1.0
+    },
+    {
+     "min_conf": 0.55,
+     "kept": 0.3621,
+     "accuracy": 1.0,
+     "balanced": 1.0
+    },
+    {
+     "min_conf": 0.6,
+     "kept": 0.2816,
+     "accuracy": 1.0,
+     "balanced": 1.0
+    },
+    {
+     "min_conf": 0.65,
+     "kept": 0.1954,
+     "accuracy": 1.0,
+     "balanced": 1.0
+    },
+    {
+     "min_conf": 0.7,
+     "kept": 0.092,
+     "accuracy": 1.0,
+     "balanced": 1.0
+    }
+   ]
+  }
+ ]
+}

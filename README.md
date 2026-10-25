@@ -1,312 +1,330 @@
-# Footfall Analysis: Gender Model Training & Age Classification
+# IFAS: what can one CCTV camera reliably tell you about the people in view?
 
-This repository contains the training pipeline to fine-tune a Vision Transformer (ViT) model for gender classification as part of a larger Footfall Analysis system. The system leverages a two-stage training approach to achieve high classification accuracy on pedestrian images.
+IFAS (Intelligent Footfall Analysis System) turns fixed-camera footage into
+measurements: who is in view (gender, age group), how long they stay, where they
+go, and which seats or tables are in use. It started as a product for retail
+stores. This repository is now organised as a **research project** around one
+question: *which of these measurements hold up on real CCTV, and why?*
 
-## Overview
+Each measurement is treated as a claim to test against held-out data, with
+confidence intervals, rather than a number to display. So far the answers are
+mixed, and the mixed answers are the findings. The gender model loses about nine
+points of accuracy on a PETA subset it was never trained on. The age model is at
+chance once its classes are balanced. Footfall counts inflate five-fold in a crowded room.
+Zone occupancy, which needs no identity at all, stays consistent with what is
+in the frame. What fixed the visible mistakes was not a bigger model but
+better votes, stricter tracking, two models averaged, and the system saying
+"not sure" when it is.
 
-The gender classification pipeline is built on a pure vision transformer backbone (`google/vit-base-patch16-224`) pre-trained on ImageNet-21k. Instead of multi-modal architectures (such as CLIP), a dedicated vision model is used to preserve features and optimize performance on visual classification tasks.
-
-The training pipeline consists of two distinct stages:
-
-```mermaid
-graph TD
-    A[PETA Dataset] --> D[Stage 1: Base Attribute Training]
-    D -->|Push to HF Hub| E(Stage 1 Checkpoint)
-    E --> F[Stage 2: Target Domain Fine-Tuning]
-    G[Local User Data] --> F
-    F -->|Push to HF Hub| H(Stage 2 Checkpoint)
-    H --> I[Inference Pipeline: Detection + Classification]
-```
-
-The age classification pipeline takes a different approach: it replicates the original PETA benchmark methodology (Deng et al., 2014) using classical computer vision, region based color and texture histograms as features, with one independent SVM per age attribute (one vs rest). There is no fine-tuning stage; the model is trained once on PETA and serialized directly.
-
-```mermaid
-graph TD
-    A[PETA Dataset] --> B[Feature Extraction: Region-based Color + LBP Texture Histograms]
-    B --> C[Per-Attribute SVM Training: One-vs-Rest, Histogram Intersection + RBF]
-    C -->|Serialize| D(classifiers.pkl)
-    D --> E[Inference Pipeline: Detection + Classification]
-```
-
-### Why ViT over CLIP for classification for Gender Classification?
-- **Vision-Only Focus**: CLIP is a vision-language model. Fine-tuning it for a binary gender head discards the text encoder, reducing a large multi-modal architecture to a simple classifier. 
-- **Efficiency and Specialization**: ViT acts as a pure, high-performance vision backbone. It is better suited for fine-tuning on structural pedestrian attributes.
-
-### Why classical color and texture features with SVMs for Age Classification?
-- **Faithful Reproduction**: The age model replicates the documented PETA benchmark methodology exactly, region-based color and texture histograms as features, one histogram-intersection-kernel SVM per attribute (one vs rest), evaluated with per-attribute mean Accuracy (mA), so results stay directly comparable to the published baseline instead of a deep learning approach.
-- **No CNNs, No Ensembling**: The pipeline deliberately avoids deep learning and ensembling, using classical computer vision features and per-attribute SVMs, selected by grid search over a histogram-intersection kernel and an RBF kernel.
+The system around the research still works end to end: a video goes in, and an
+annotated MP4, an `analytics.json` and a browser **workbench** come out.
 
 ---
 
-## Documentation
+## Research questions
 
-- **Architecture Diagrams**: For detailed flowcharts of the inference pipeline and internal model structure, see the [Architecture Overview](docs/architecture/README.md).
-- **Fine-Tuning Guide**: For a detailed explanation of tuning stages, learning rates, and dataset configuration, see [training.md](docs/training.md).
-- **Dashboard & Inference Guide**: For the end-to-end pipeline (detection, tracking, the analytics schema) and the dashboard, see [dashboard.md](docs/dashboard.md).
-- **Age Model Guide**: For the classical computer vision pipeline used for age classification (feature extraction, per-attribute SVMs), see the Age Attribute Model section in [training.md](docs/training.md) and the `age_classifier_v3.ipynb` notebook.
+| | Question | Status | Details |
+| :- | :--- | :--- | :--- |
+| **RQ1** | How large is the gap between the training data (PETA) and real CCTV, and what drives it? | First results on held-out PETA identities; MARS and store footage pending | [research-plan.md](docs/research-plan.md) §2, §8 |
+| **RQ2** | Can the gap be closed without labelling store footage (degradation augmentation, Fourier Domain Adaptation)? | Code done, needs a GPU | `src/research/rq2.py`, `research_rq2_training.ipynb` |
+| **RQ3** | Does pooling a person's frames help, and should sharp, unoccluded frames count more? | Code done, needs labelled store clips | `src/research/pooling.py`, [paper/sections/rq3.tex](paper/sections/rq3.tex) |
+| **RQ4** | Which seats and tables are taken, and which will free up next? | **Runs end to end**; first results on a lecture-room recording, scored against AI-annotator seat labels; human labels pending | [docs/zones.md](docs/zones.md), [paper/sections/rq4.tex](paper/sections/rq4.tex) |
 
----
+## Findings so far
 
-## Repository Layout
+Every number below is in a results file under `paper/results/`, written by a
+script in `scripts/research/`. Intervals are 95%.
 
-```
-├── docs/
-│   ├── architecture/
-│   │   ├── README.md           # Architecture diagrams overview and explanation
-│   │   ├── gender_model_architecture.mmd # Gender model architecture diagram (Mermaid)
-│   │   └── age_model_architecture.mmd    # Age model architecture diagram (Mermaid)
-│   └── training.md             # Detailed guide explaining stages and tuning strategies
-├── app/
-│   ├── server.py               # Dashboard server (serves the UI, runs the pipeline on upload)
-│   └── static/                 # The dashboard itself (HTML + CSS + vanilla JS)
-│       ├── app.js              # Controller: loads a run, filters it, renders every tab
-│       ├── charts.js           # Hand-drawn SVG charts
-│       ├── stage3d.js          # The 3D floor (heat columns, paths, replay)
-│       ├── skyline3d.js        # The 3D age and gender blocks
-│       ├── three-kit.js        # Shared three.js plumbing
-│       ├── vendor/             # three.js bundle, built from three-entry.js
-│       └── fonts/              # Inter (OFL)
-├── paper/
-│   ├── ifas.tex                # The research paper (IEEE conference format)
-│   ├── ifas.pdf                # Built paper
-│   └── figures/                # Plot script, plots and the dashboard screenshot
-├── src/
-│   ├── inference/
-│   │   ├── pipeline.py         # Video -> annotated MP4 + analytics.json
-│   │   ├── models.py           # GenderModel (ViT) and AgeModel (histograms + SVMs) wrappers
-│   │   ├── tracker.py          # IoU tracker: detections -> people
-│   │   └── analytics.py        # Tracks -> the analytics document the dashboard reads
-│   └── training/
-│       ├── __init__.py
-│       ├── datasets.py         # PyTorch Dataset definitions for PETA and stage-2 user data
-│       ├── model.py            # GenderClassifier model definition (ViT backbone + Linear head)
-│       ├── trainer.py          # Custom trainer logic supporting linear probing and full fine-tuning
-│       └── transforms.py       # Data augmentation and preprocessing transforms
-├── tests/
-│   ├── __init__.py
-│   ├── test_training.py        # Unit tests for training components
-│   └── test_inference.py       # Unit tests for tracking and analytics
-├── scripts/
-│   ├── download_datasets.md    # Instructions and links to download baseline datasets
-│   ├── generate_demo_run.py    # Synthesises a sample run so the dashboard opens without weights
-│   └── benchmark_stages.py     # Times detection and both classifiers on this machine
-├── train_stage1.ipynb          # Notebook for Stage 1 base training
-├── train_stage2.ipynb          # Notebook for Stage 2 target fine-tuning
-├── test_model.ipynb            # Notebook for evaluating checkpoint on images/videos
-├── age_classifier_v3.ipynb     # Notebook for training and evaluating the age attribute model (classical CV + SVM)
-├── requirements.txt            # Python dependencies
-└── README.md                   # Project documentation
-```
+1. **The gender model is about nine points worse on images it never trained on.**
+   On PETA's CUHK subset, which both released models were trained without, the
+   gender ViT scores **0.892 [0.883, 0.901]** accuracy and **0.868** balanced
+   accuracy (n = 4,563), against up to **97.8%** validation accuracy reported
+   from an image-level split. New people and a new subset both differ from
+   that validation set; RQ1's identity split separates the two.
+   (`rq1_gap.json`)
+2. **The age model is at chance once its classes are balanced.** Plain accuracy
+   is **0.757**, but balanced accuracy is **0.238 [0.227, 0.250]** for four
+   classes (chance is 0.25), and mean per-group accuracy (mA) is **0.493**,
+   against **0.835** reported. Its errors fall as crops get sharper (the
+   high-frequency ratio separates right from wrong with AUC 0.596); the gender
+   model's do not (AUC 0.496). (`rq1_gap.json`)
+3. **The reported numbers came from a split that leaks identities.** In an
+   image-level PETA split, 74 to 75% of test images show a person who is also
+   in training. Every new result uses identity-disjoint splits
+   ([research-data.md](docs/research-data.md)).
+4. **A silent loader bug changed results across library versions.** Under some
+   `transformers` versions the inference loader skipped the fine-tuned encoder.
+   On a 97 s retail clip, the fix changed 15 of 46 people. The version is now
+   pinned. (`b1_gender_rebaseline.json`)
+5. **In a dense, seated room the detector is the bottleneck.** On 20 frames
+   from a lecture room with about forty students, YOLOv8n finds **5.2** people
+   per frame at confidence 0.4, and **14.3** with 2×2 tiling. YOLOv8s finds
+   21.8 with tiling and YOLOv8m **27.1**, at 2 and 5 seconds per frame on a
+   laptop CPU. (`rq4_detection.json`)
+6. **Footfall needs identity, and identity breaks in crowds.** The same
+   recording produced **231 tracks** for at most **45** people in view, 5.1
+   tracks per person. Zone occupancy needs no identity: 41 seats were taken at
+   the peak and **37** at the end, in line with the people visible.
+   (`rq4_zones.json`)
+7. **Seat state is stable once smoothed, and cheap to sample.** Smoothing cuts
+   seat-state flicker ten-fold, from 7.10 to **0.71** changes per seat-minute.
+   Spatial hysteresis removes 37% of the raw changes without moving occupancy.
+   Sampling every 0.8 s instead of 0.2 s keeps **95.9%** of seat states. The
+   lower-body anchor puts 6.4% of seated people's sightings in no seat; the box
+   centre puts 29.4% there. (`rq4_zones.json`)
 
----
+8. **On CCTV, averaging two gender models beats either one.** The fine-tuned
+   ViT is best on PETA, CLIP zero-shot (no training at all) is best on the
+   lecture room, and their average is best on both: **0.888** balanced
+   accuracy on PETA's held-out CUHK identities (ViT alone 0.875) and **0.874**
+   accuracy on the lecture room (ViT alone 0.820). For age, CLIP zero-shot
+   reaches **0.361** balanced on PETA's four groups against the SVMs' 0.238.
+   Heads fitted on PETA's training images do *worse* on the lecture room than
+   zero-shot. (`attributes.json`, `clip_probe.json`)
+9. **"Not sure" beats a wrong answer.** Leaving people below a confidence
+   threshold as unknown, gender keeps **82%** of people at **92.7%** accuracy
+   and age **72%** at **97.6%** (lecture room). The mistakes you could see in
+   the video had concrete causes, each now fixed: all votes taken in a
+   person's first five seconds, track numbers drifting between seated
+   neighbours, crops showing two people, and boxes drawn with an old label.
+   ([research-plan.md](docs/research-plan.md) §10)
+10. **Seat occupancy is precise but misses hidden people.** Against seat
+    labels on the 20 saved frames, a seat the system calls taken is taken
+    **96%** of the time, but 29% of taken seat-moments read free (recall
+    **0.71**), mostly students hidden in the back rows. (`rq4_zones.json`)
 
-## Notebook Guide
-
-This repository contains three main notebooks to execute the workflow:
-
-| Notebook | Purpose | Usage Frequency |
-| :--- | :--- | :--- |
-| `train_stage1.ipynb` | Train on PETA dataset. Push the best checkpoint to the Hugging Face Hub. | Once (or during major retraining runs). |
-| `train_stage2.ipynb` | Load the Stage 1 checkpoint from the Hugging Face Hub. Fine-tune on your specific local domain data. Push the updated checkpoint back to the Hub. | Whenever new labeled target data is collected. |
-| `test_model.ipynb` | Load the final Stage 2 checkpoint from the Hugging Face Hub. Test the model performance on images and videos. | Every time you need to evaluate or verify model changes. |
-| `age_classifier_v3.ipynb` | Extract region-based color and texture histogram features from PETA, train one SVM per age attribute (one vs rest), evaluate with per-attribute mean Accuracy (mA), and test on a video via person detection + crop classification. | Once (or during major retraining runs). |
-
----
-
-## Training Strategy
-
-### Stage 1: Base Attribute Training
-This stage trains the model on the public PETA pedestrian dataset to establish strong baseline features.
-
-1. **Phase A (Linear Probe)**:
-   - **Configuration**: Backbone frozen, classification head active.
-   - **Learning Rate**: 1e-3.
-   - **Duration**: 3 epochs.
-   - **Goal**: Warm up the new linear classification head without modifying pre-trained ViT weights.
-
-2. **Phase B (Full Fine-Tuning)**:
-   - **Configuration**: Backbone unfrozen, end-to-end training.
-   - **Learning Rate**: 1e-5 with cosine decay and a 10% warmup phase.
-   - **Duration**: 10 epochs.
-   - **Goal**: Fine-tune the entire network for pedestrian gender attributes.
-
-The best checkpoint is pushed directly to the Hugging Face Hub (e.g., `abhshkp/footfall-analysis-vit-stage1`).
-
-### Stage 2: Target Domain Fine-Tuning
-This stage adapts the pre-trained Stage 1 model to your specific domain (such as local CCTV cameras or store entrances) using a smaller dataset and a lower learning rate to prevent catastrophic forgetting.
-
-1. **Phase A (Linear Probe)**:
-   - **Configuration**: Backbone frozen.
-   - **Learning Rate**: 1e-4 (one-tenth of Stage 1).
-   - **Duration**: 2 epochs.
-
-2. **Phase B (Full Fine-Tuning)**:
-   - **Configuration**: Backbone unfrozen.
-   - **Learning Rate**: 1e-6 (one-tenth of Stage 1).
-   - **Duration**: 5 epochs.
-
-### Age Attribute Model: Classical CV + Per-Attribute SVMs
-This model classifies pedestrians into four age buckets (`Age16-30`, `Age31-45`, `Age46-60`, `AgeAbove61`) by replicating the original PETA paper baseline. There are no linear probe or full fine-tuning phases, it is a single-stage classical pipeline trained once on PETA.
-
-1. **Feature Extraction**:
-   - Each image is split into horizontal body regions.
-   - Per region: 16-bin RGB and HSV color histograms plus a uniform LBP texture histogram (radii 1, 2, 3), all L1-normalized.
-   - Regions are concatenated into one feature vector per image.
-
-2. **Per-Attribute SVM Training**:
-   - One independent SVM is trained per age attribute (one vs rest).
-   - Both a histogram-intersection kernel and an RBF kernel are grid searched over `C` and `gamma`, and the best configuration per attribute is chosen using validation mA.
-   - Evaluated on the held-out PETA test split with per-attribute mean Accuracy (mA), achieving an average mA of roughly 0.835.
-
-The best classifiers per attribute are serialized directly to `classifiers.pkl` (not pushed to the Hugging Face Hub).
+**About the lecture-room labels.** Findings 8 to 10 use labels made by an AI
+annotator (Claude) from the saved frames and crops, clearly marked as such in
+the run (`labels_claude-ai.json`, `zone_labels_claude-ai.json`). They are good
+for comparing models on the same people, not a substitute for two people
+labelling, which the protocol in [research-data.md](docs/research-data.md)
+asks for before any of this is reported.
 
 ---
 
-## Dataset Layout
+## RQ4: zone occupancy, like the restaurant demos
 
-To train Stage 1, download the PETA dataset as detailed in `scripts/download_datasets.md`.
-To train Stage 2, prepare your local dataset in the following directory format:
+![Zone view: seats outlined on the camera frame, free in green and taken in red with timers, a status board and the next seat to free up](docs/zones-diagram.svg)
 
-```
-data/
-└── user/
-    ├── male/
-    │   ├── img001.jpg
-    │   ├── img002.jpg
-    │   └── ...
-    └── female/
-        ├── img003.jpg
-        ├── img004.jpg
-        └── ...
-```
+Outline the tables or seats once, or let IFAS find them from where people sat
+still. The workbench then shows:
+- every place, green when free and red with a running timer when taken
+  (≥ when the stay began before the recording);
+- a status board, with the place taken longest (the usual guess for the next
+  to free up) marked by pulsing rings, its expected time left from a
+  Kaplan–Meier curve of stay lengths, and the runners-up;
+- a Gantt chart of every stay, utilisation per place, a Kaplan–Meier survival
+  curve of stay lengths, and alerts for long stays and long queue waits.
 
-The same PETA dataset is also used to train the age model, using the `personalLess30`, `personalLess45`, `personalLess60`, and `personalLarger60` attributes (mapped to `Age16-30`, `Age31-45`, `Age46-60`, and `AgeAbove61` respectively; `personalLess15` is dropped since it does not fit any of these buckets).
+`scripts/render_zones.py` burns the same view into an MP4 with a side panel.
 
-### Dataset Summary
+Under the hood:
+- an anchor rule for seated people;
+- spatial hysteresis, so a leaning person stays in their seat;
+- temporal smoothing with censoring at both ends of the recording;
+- a causal evaluation of the next-free rule against "taken longest" and chance;
+- a zone-labelling page with inter-annotator agreement.
 
-| Dataset | Sample Count | Label Source |
-| :--- | :--- | :--- |
-| PETA | ~19,000 | `personalMale` attributes |
-| PETA (age attributes) | ~14,000 | `personalLess30` / `personalLess45` / `personalLess60` / `personalLarger60` attributes |
-| Local User Data | Variable | Hand-labeled by organizing into folders |
+See [docs/zones.md](docs/zones.md).
 
 ---
 
-## Quick Start
-
-### 1. Installation
-Install the required dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Testing the Model
-If you already have a trained checkpoint uploaded to Hugging Face:
-1. Open the `test_model.ipynb` notebook.
-2. Update the repository name:
-   ```python
-   HF_REPO = "abhshkp/footfall-analysis-vit-stage1"
-   ```
-3. Run the notebook cells to upload a test video and get an annotated MP4 output.
-
-### 3. Running Stage 2 Fine-Tuning
-1. Open the `train_stage2.ipynb` notebook.
-2. Configure the source Stage 1 repository:
-   ```python
-   hf_repo = "abhshkp/footfall-analysis-vit-stage1"
-   ```
-3. Upload your labeled dataset under `data/user/male/` and `data/user/female/`.
-4. Run all cells to fine-tune the model and push the new checkpoint to your target Hugging Face repository.
-
-### 4. Running the Age Classifier
-1. Open the `age_classifier_v3.ipynb` notebook.
-2. Mount Google Drive and set `PETA_ROOT` to your extracted PETA dataset (skip the mount step if running locally).
-3. Run all cells to extract features, train one SVM per age attribute, and evaluate on the held-out test split using per-attribute mean Accuracy (mA).
-4. Optionally upload a video to test detection plus age classification end to end; the notebook writes an annotated `output_video.mp4`.
-5. The trained classifiers are saved to `classifiers.pkl`.
-
----
-
-## Dashboard
-
-The notebooks train and spot-check the models; the dashboard is where the output
-becomes readable. A video is run through detection, tracking and both
-classifiers, producing an annotated MP4 and an `analytics.json` that the UI
-renders: footfall over time, occupancy, the age × gender cross-tab, dwell and
-engagement tiers, a position density map, per-model confidence, and a per-visitor
-log with CSV export. The views are tabs in a glass bar, and the density map is a
-3D floor you can orbit and replay. Light and dark themes. Nothing is loaded from
-a CDN: three.js and the fonts are vendored, so it works offline.
+## Reproducing
 
 ```bash
 pip install -r requirements.txt
+python -m pytest -q                      # the whole suite (229 tests), CPU only, a couple of minutes
 
-# See the dashboard immediately, with a synthetic sample run (no weights needed)
-python scripts/generate_demo_run.py
+# Process a recording (models download from the Hugging Face Hub on first use)
+python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip1 \
+    --gender-repo abhshkp/footfall-analysis-vit-stage2 \
+    --age-bundle abhshkp/footfall-analysis-age-svm \
+    [--tiles 2x2] [--stride 5] [--export-crops] [--site S --camera C]
+
+# RQ1: held-out evaluation (PETA identity split; CUHK for the released models)
+python scripts/research/make_peta_split.py --help
+python scripts/research/eval_frames.py --domain peta --subsets CUHK --split all --peta-root data/PETA
+
+# RQ4: zone study and detection study on a processed run (no model is re-run for zones)
+python scripts/research/zone_study.py --run outputs/runs/clip1
+python scripts/research/detector_study.py --video clip.mp4
+python scripts/render_zones.py --run outputs/runs/clip1 --video clip.mp4
+
+# Classifiers on labelled people: which model, and how often a final label is right
+python scripts/research/attribute_study.py --runs outputs/runs/clip1 --annotator <name>
+python scripts/research/label_check.py --run outputs/runs/clip1 --annotator <name>
+
+# Figures and the numbers the paper quotes
+python paper/figures/make_figures.py
+```
+
+Results land in `paper/results/*.json` as `{"meta": {commit, date, models,
+...}, "rows": [...]}`, so every number can be traced to the code that produced
+it. RQ2 and RQ3 need a GPU and labelled clips; Section 8 of
+[research-plan.md](docs/research-plan.md) says exactly what each step needs.
+
+## The workbench
+
+```bash
+python scripts/generate_demo_run.py      # a synthetic run, so it opens without weights or footage
 python -m app.server                     # http://127.0.0.1:8000
-
-# Process a real video
-python -m src.inference.pipeline     --video store_entrance.mp4 --out outputs/runs/store     --gender-repo abhshkp/footfall-analysis-vit-stage2     --age-bundle abhshkp/footfall-analysis-age-svm
 ```
 
-A **Store insights** section turns the run into business observations (footfall
-rate, busiest stretch, stopping power, who visits, busiest area) and compares
-every recording **daily, weekly and monthly** across five metrics. Aggregation
-is per observed hour at a named site and camera, so recordings of different
-lengths compare fairly; generated sample runs are excluded from every aggregate
-unless explicitly included. `scripts/process_folder.py` processes a folder of
-recordings in one command, which is how the history gets built.
+| Tab | What it shows |
+| :--- | :--- |
+| Overview | Headline numbers, findings with sample sizes and 95% intervals, footfall and occupancy over time |
+| Guide | The recording in plain words for the owner: how busy it was, when people came, whether they stopped, where they went, seats, waits, who visited, what to try, and how far to trust each number |
+| Zones | The camera frame with seats and tables, status board, next to free up, stays, utilisation, survival curve, alerts, the zone editor, method settings and validity checks |
+| Floor | A 3D floor to orbit and replay: heat columns, paths and zones |
+| People | Age × gender, dwell and engagement, per-model confidence |
+| Trends | Daily, weekly and monthly comparisons across recordings, per observed hour |
+| Video | The annotated recording, linked to every chart's playhead |
+| Log | Every tracked person, with CSV export |
 
-The dashboard has two levels of detail, toggled in the header: **Simple**
-(plain-language summary and headline numbers, for whoever runs the shop) and
-**Detailed** (filters, cross-tabs, model confidence, per-visitor log).
+Two labelling pages feed the research: `label.html` (gender and age per
+person, for RQ1 to RQ3) and `zones-label.html` (taken or free per zone per
+frame, for RQ4). Each writes one file per annotator, so agreement can be
+measured. Everything is vendored (three.js, fonts), so the workbench runs
+offline. Light and dark themes. The full reference, including the analytics
+schema and the upload dialog, is in [docs/dashboard.md](docs/dashboard.md).
+
+---
+
+## System
+
+```mermaid
+graph LR
+    V[Video] --> D["Person detection<br/>YOLOv8, optional tiles"]
+    D --> T["IoU tracker<br/>re-joins lost people"]
+    T --> G["Gender: fine-tuned ViT<br/>averaged with CLIP zero-shot"]
+    T --> A["Age: CLIP zero-shot<br/>(SVMs with --attributes vit)"]
+    T --> B[track_boxes.json]
+    B --> Z["Zones<br/>occupancy, stays, next free"]
+    G --> J[analytics.json]
+    A --> J
+    Z --> J
+    J --> W[Workbench]
+```
+
+**Gender: a fine-tuned ViT averaged with CLIP zero-shot.** The ViT
+(`google/vit-base-patch16-224`) is fine-tuned in two stages. Stage 1 trains on
+PETA, first as a linear probe (3 epochs, LR 1e-3) and then fully fine-tuned (10
+epochs, LR 1e-5, cosine decay, 10% warmup). Stage 2 adapts it to local footage
+at a tenth of those learning rates. CLIP ViT-B/32 is asked, with no training,
+whether a crop is a CCTV image of a man or of a woman. The ViT is best on
+PETA's small crops, CLIP on 1080p CCTV, and their average on both (finding 8),
+so the pipeline averages them (`--attributes ensemble`, the default).
+
+**Age: CLIP zero-shot.** Coarse prompts (a young person, an adult, a
+middle-aged person, an old person) map onto PETA's four age groups. The
+original age model replicates the PETA baseline (Deng et al., 2014): colour and
+LBP texture histograms per body region and one SVM per age group, chosen by
+grid search on validation mA. It is at chance on held-out identities (finding
+2) and stays available with `--attributes vit`.
+
+**Tracking and pooling.** An IoU tracker re-joins people the detector lost for
+a few seconds; in crowded rooms (`--tiles`) a box must overlap a person's last
+box by IoU 0.5 to continue them, so a seated neighbour cannot take over. A
+person's crops are classified through their whole stay (the gap between votes
+doubles every four votes, up to 24 votes), crops that show two people are
+skipped, and the votes are pooled by majority. Below a confidence of 0.6
+(gender) or 0.4 (age), or when the two halves of a stay disagree, the person
+is reported as "not sure" (finding 9). RQ3 tests whether quality-weighted
+pooling does better.
+
+Training details and hyperparameter studies:
+[docs/training.md](docs/training.md) and
+[docs/hyperparameter-analysis](docs/hyperparameter-analysis/README.md).
+Architecture diagrams: [docs/architecture](docs/architecture/README.md).
+
+### Notebooks
+
+| Notebook | Purpose |
+| :--- | :--- |
+| `train_stage1.ipynb` | Stage 1 gender training on PETA; pushes the checkpoint to the Hub |
+| `train_stage2.ipynb` | Stage 2 fine-tuning on local labelled crops (`data/user/male`, `data/user/female`) |
+| `age_classifier_v3.ipynb` | Age features, per-group SVMs, mA evaluation; exports the bundle |
+| `research_rq2_training.ipynb` | RQ2: the adaptation conditions, three seeds each, held-out PETA test |
+| `test_model.ipynb` | Spot-check a checkpoint on images or a video |
+
+### Models and checkpoints
+
+Checkpoints are too large for git and live on the Hugging Face Hub:
+
+| Model | Hub repo |
+| :--- | :--- |
+| Gender, stage 1 | `abhshkp/footfall-analysis-vit-stage1` |
+| Gender, stage 2 (pipeline default) | `abhshkp/footfall-analysis-vit-stage2` |
+| Age SVM bundle (`age_classifier_bundle.pkl`, about 36 MB) | `abhshkp/footfall-analysis-age-svm` |
+
+```bash
+hf download abhshkp/footfall-analysis-vit-stage2 --local-dir models/hf/abhshkp__footfall-analysis-vit-stage2
+hf download abhshkp/footfall-analysis-age-svm age_classifier_bundle.pkl
+```
+
+`transformers` is pinned (finding 4). New checkpoints from RQ2 go to **new**
+Hub repos, so the released ones stay comparable.
+
+---
+
+## Data, consent and ethics
+
+- **PETA** (training, RQ1 and RQ2), **MARS** with MARS-Attribute labels (RQ1,
+  RQ3) and **RAP** (optional) are research-only datasets. They are never
+  committed or redistributed. Sources, licences and label mappings are in
+  [docs/research-data.md](docs/research-data.md).
+- **Store and classroom footage** is used only with written permission
+  ([letter](docs/research-permission.md)). It is recorded in the table in
+  `research-data.md`, and `scripts/research/check_data.py` refuses a test clip
+  without a permission row. The lecture-room recording behind RQ4's first
+  results **does not have its permission row filled in yet**. No number from it
+  goes into a submission until it does.
+- Footage, frames, crops, renders and labels stay out of git (`outputs/`,
+  `data/`, `footage/`, `*.avi`, `*.mp4`).
+- Gender is predicted as PETA's binary label, which is a dataset limitation,
+  not a claim about anyone. The system does not identify anyone, and it should
+  not be used to monitor individuals.
+
+## Repository layout
+
+```
+├── src/
+│   ├── inference/          # the system
+│   │   ├── pipeline.py     # video -> annotated MP4, analytics.json, track_boxes.json (tiled detection)
+│   │   ├── tracker.py      # IoU tracker with re-joining
+│   │   ├── models.py       # gender ViT and age SVM wrappers
+│   │   ├── analytics.py    # tracks -> the analytics document
+│   │   ├── trends.py       # findings with intervals; daily/weekly/monthly comparisons
+│   │   └── zones.py        # RQ4: zones, anchors, hysteresis, smoothing, survival, automatic seats
+│   ├── research/           # experiments: degrade, spectrum, stats, pooling, quality, attention,
+│   │                       #   peta, mars, rq2, zone_eval
+│   └── training/           # datasets, model, trainer, transforms (incl. FDA)
+├── scripts/
+│   ├── research/           # one script per experiment, each writing paper/results/*.json
+│   ├── render_zones.py     # RQ4 video with the zone overlay and status panel
+│   ├── process_folder.py   # many recordings in one command
+│   ├── generate_demo_run.py
+│   └── benchmark_stages.py
+├── app/                    # the workbench: server.py + static/ (vanilla JS, three.js vendored)
+├── paper/                  # IEEE-format paper, per-RQ sections, results/, figures/
+├── docs/                   # research plan, data and consent, zones, dashboard, training
+├── tests/                  # pytest, CPU only
+└── *.ipynb                 # training and evaluation notebooks
+```
 
 ## Paper
 
-The research paper is in [paper/](paper/README.md): the IEEE-format source, the
-script that draws its plots and the built PDF.
+[paper/](paper/README.md) holds the IEEE-format paper (`ifas.tex`), the
+research sections written so far (`sections/`, built on their own by
+`draft_personA.tex` and `draft_rq4.tex`), the results files and the script that
+draws every figure. In the text, each result is a macro filled in from the
+results files, so no number is typed by hand.
 
-## Research
-
-[docs/research-plan.md](docs/research-plan.md) turns the system into a research
-paper around three questions: how big the PETA-to-CCTV gap is, whether it can be
-closed without labelling store data, and how to pool a person's frames. The code
-is in `src/research/` and `scripts/research/`; Section 8 of the plan lists what
-is done and what still needs footage, labels or a GPU. Data sources, consent and
-the labelling protocol are in [docs/research-data.md](docs/research-data.md).
-
-Age classification is optional and needs a bundle exported from
-`age_classifier_v3.ipynb` first - see [docs/dashboard.md](docs/dashboard.md),
-which also covers the full flag reference, the analytics schema and the known
-limitations.
-
----
-
-## Model Serialization and Checkpoints
-
-Since trained checkpoints are large (approximately 340 MB) and exceed the GitHub file size limit, they are managed outside Git.
-
-### Hugging Face Hub (Recommended)
-You can push and pull checkpoints directly to the Hugging Face Hub using the Hugging Face CLI:
-
-```bash
-# Log in to your Hugging Face account
-huggingface-cli login
-
-# Upload a local checkpoint
-huggingface-cli upload abhshkp/footfall-analysis-vit-stage1 checkpoints/stage1/best --repo-type=model
-
-# Download the checkpoint to a local directory
-huggingface-cli download abhshkp/footfall-analysis-vit-stage1 --local-dir checkpoints/stage1/best
+```bibtex
+@misc{ifas2026,
+  title  = {{IFAS}: Intelligent Footfall Analysis System for Retail Environments},
+  author = {{IFAS team}},
+  year   = {2026},
+  note   = {Research code and workbench}
+}
 ```
-
-### Google Drive
-Alternatively, you can mount Google Drive in your Colab environment and save checkpoints directly to a shared folder:
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-```
-Saved checkpoints are stored in `/content/drive/MyDrive/IPD_checkpoints/`.
-
-### Age Model Classifiers
-The age model's classifiers are much smaller than the ViT checkpoints and are saved as a pickled dictionary of per-attribute SVMs (`classifiers.pkl`, roughly 79 MB, about 35 MB zipped). They can be shared the same way as the gender checkpoints, via the Hugging Face Hub, Google Drive, or a direct pickle transfer.

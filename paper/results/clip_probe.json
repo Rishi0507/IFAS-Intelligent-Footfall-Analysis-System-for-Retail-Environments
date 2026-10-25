@@ -1,0 +1,328 @@
+{
+ "meta": {
+  "commit": "2eaf892",
+  "date": "2026-10-25T16:57:19",
+  "models": [
+   "openai/clip-vit-base-patch32"
+  ],
+  "seeds": [],
+  "split": "split_identity_all.csv",
+  "trained_on": "PETA identity split (train)",
+  "annotator": "claude-ai",
+  "runs": [
+   "djsce-cr22-2026-09-14"
+  ]
+ },
+ "rows": [
+  {
+   "task": "gender",
+   "C": 0.01,
+   "val_score": 0.6879,
+   "train": 3001,
+   "test": 1501,
+   "accuracy": {
+    "value": 0.7468,
+    "lo": 0.7137,
+    "hi": 0.7781,
+    "n": 1501
+   },
+   "balanced_accuracy": {
+    "value": 0.7417,
+    "lo": 0.7078,
+    "hi": 0.7746,
+    "n": 1501
+   },
+   "by_subset": {
+    "3DPeS": {
+     "n": 87,
+     "accuracy": 0.7931,
+     "balanced": 0.5881
+    },
+    "CAVIAR4REID": {
+     "n": 101,
+     "accuracy": 0.5941,
+     "balanced": 0.6216
+    },
+    "CUHK": {
+     "n": 358,
+     "accuracy": 0.8296,
+     "balanced": 0.7728
+    },
+    "GRID": {
+     "n": 94,
+     "accuracy": 0.6702,
+     "balanced": 0.6634
+    },
+    "MIT": {
+     "n": 69,
+     "accuracy": 0.8116,
+     "balanced": 0.7391
+    },
+    "PRID": {
+     "n": 93,
+     "accuracy": 0.6774,
+     "balanced": 0.6837
+    },
+    "SARC3D": {
+     "n": 16,
+     "accuracy": 0.875,
+     "balanced": 0.8333
+    },
+    "TownCentre": {
+     "n": 555,
+     "accuracy": 0.7261,
+     "balanced": 0.7162
+    },
+    "VIPeR": {
+     "n": 93,
+     "accuracy": 0.7419,
+     "balanced": 0.7451
+    },
+    "i-LID": {
+     "n": 35,
+     "accuracy": 0.7714,
+     "balanced": 0.7667
+    }
+   }
+  },
+  {
+   "task": "age",
+   "C": 0.01,
+   "val_score": 0.4822,
+   "train": 2969,
+   "test": 1485,
+   "accuracy": {
+    "value": 0.5064,
+    "lo": 0.4701,
+    "hi": 0.5434,
+    "n": 1485
+   },
+   "balanced_accuracy": {
+    "value": 0.4107,
+    "lo": 0.3634,
+    "hi": 0.4596,
+    "n": 1485
+   },
+   "by_subset": {
+    "3DPeS": {
+     "n": 86,
+     "accuracy": 0.3605,
+     "balanced": 0.3281
+    },
+    "CAVIAR4REID": {
+     "n": 101,
+     "accuracy": 0.505,
+     "balanced": 0.3321
+    },
+    "CUHK": {
+     "n": 358,
+     "accuracy": 0.8268,
+     "balanced": 0.3621
+    },
+    "GRID": {
+     "n": 94,
+     "accuracy": 0.4362,
+     "balanced": 0.2512
+    },
+    "MIT": {
+     "n": 68,
+     "accuracy": 0.5441,
+     "balanced": 0.4385
+    },
+    "PRID": {
+     "n": 92,
+     "accuracy": 0.5217,
+     "balanced": 0.3616
+    },
+    "SARC3D": {
+     "n": 16,
+     "accuracy": 0.5625,
+     "balanced": 0.4259
+    },
+    "TownCentre": {
+     "n": 543,
+     "accuracy": 0.3039,
+     "balanced": 0.3213
+    },
+    "VIPeR": {
+     "n": 93,
+     "accuracy": 0.6452,
+     "balanced": 0.3289
+    },
+    "i-LID": {
+     "n": 34,
+     "accuracy": 0.4118,
+     "balanced": 0.2771
+    }
+   }
+  },
+  {
+   "run": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "gender",
+   "model": "clip",
+   "crop_accuracy": {
+    "value": 0.7394,
+    "lo": 0.6883,
+    "hi": 0.7909,
+    "n": 1903
+   },
+   "crop_balanced": {
+    "value": 0.598,
+    "lo": 0.5545,
+    "hi": 0.6446,
+    "n": 1903
+   },
+   "person_accuracy": {
+    "value": 0.7725,
+    "lo": 0.7124,
+    "hi": 0.8325,
+    "n": 167
+   },
+   "person_balanced": {
+    "value": 0.6206,
+    "lo": 0.5572,
+    "hi": 0.6894,
+    "n": 167
+   },
+   "people": 167,
+   "crops": 1903,
+   "truth": {
+    "female": 46,
+    "male": 121
+   },
+   "predicted": {
+    "female": 18,
+    "male": 149
+   }
+  },
+  {
+   "run": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "gender",
+   "model": "product",
+   "crop_accuracy": {
+    "value": 0.7656,
+    "lo": 0.7192,
+    "hi": 0.8085,
+    "n": 1903
+   },
+   "crop_balanced": {
+    "value": 0.6843,
+    "lo": 0.6309,
+    "hi": 0.7342,
+    "n": 1903
+   },
+   "person_accuracy": {
+    "value": 0.8204,
+    "lo": 0.7605,
+    "hi": 0.8743,
+    "n": 167
+   },
+   "person_balanced": {
+    "value": 0.7278,
+    "lo": 0.6506,
+    "hi": 0.8013,
+    "n": 167
+   },
+   "people": 167,
+   "crops": 1903,
+   "truth": {
+    "female": 46,
+    "male": 121
+   },
+   "predicted": {
+    "female": 32,
+    "male": 135
+   }
+  },
+  {
+   "run": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "age",
+   "model": "clip",
+   "crop_accuracy": {
+    "value": 0.2462,
+    "lo": 0.2079,
+    "hi": 0.2852,
+    "n": 1978
+   },
+   "crop_balanced": {
+    "value": 0.2462,
+    "lo": 0.2079,
+    "hi": 0.2852,
+    "n": 1978
+   },
+   "person_accuracy": {
+    "value": 0.2069,
+    "lo": 0.1494,
+    "hi": 0.2701,
+    "n": 174
+   },
+   "person_balanced": {
+    "value": 0.2069,
+    "lo": 0.1494,
+    "hi": 0.2701,
+    "n": 174
+   },
+   "people": 174,
+   "crops": 1978,
+   "truth": {
+    "Age16-30": 174,
+    "Age31-45": 0,
+    "Age46-60": 0,
+    "AgeAbove61": 0
+   },
+   "predicted": {
+    "Age16-30": 36,
+    "Age31-45": 124,
+    "Age46-60": 3,
+    "AgeAbove61": 11
+   }
+  },
+  {
+   "run": "djsce-cr22-2026-09-14",
+   "annotator": "claude-ai",
+   "task": "age",
+   "model": "product",
+   "crop_accuracy": {
+    "value": 0.4803,
+    "lo": 0.4186,
+    "hi": 0.5361,
+    "n": 1978
+   },
+   "crop_balanced": {
+    "value": 0.4803,
+    "lo": 0.4186,
+    "hi": 0.5361,
+    "n": 1978
+   },
+   "person_accuracy": {
+    "value": 0.5287,
+    "lo": 0.454,
+    "hi": 0.5977,
+    "n": 174
+   },
+   "person_balanced": {
+    "value": 0.5287,
+    "lo": 0.454,
+    "hi": 0.5977,
+    "n": 174
+   },
+   "people": 174,
+   "crops": 1978,
+   "truth": {
+    "Age16-30": 174,
+    "Age31-45": 0,
+    "Age46-60": 0,
+    "AgeAbove61": 0
+   },
+   "predicted": {
+    "Age16-30": 92,
+    "Age31-45": 66,
+    "Age46-60": 7,
+    "AgeAbove61": 9
+   }
+  }
+ ]
+}

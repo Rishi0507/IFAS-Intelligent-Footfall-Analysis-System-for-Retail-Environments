@@ -2,12 +2,30 @@
 
 This directory contains architecture diagrams for the components of the Footfall Analysis project.
 
+## How the pipeline uses these models today
+
+The diagrams below show the two classifiers the project trained: the fine-tuned ViT for gender
+and the colour/texture SVMs for age. In the integrated pipeline (`src/inference/pipeline.py`):
+
+- **Detection and tracking**: YOLOv8 finds people (optionally on a 2x2 grid of tiles for crowded
+  rooms) and an IoU tracker follows them; in crowded rooms a box must overlap a person's last box
+  by IoU 0.5 to continue them.
+- **Gender**: the ViT's probabilities are averaged with CLIP ViT-B/32 used zero-shot
+  (`src/inference/clip_attrs.py`, `--attributes ensemble`, the default).
+- **Age**: CLIP zero-shot by default; the SVMs below are used with `--attributes vit`.
+- **Pooling**: each person is classified through their whole stay (the gap between votes doubles
+  every four votes, up to 24), crops showing two people are skipped, and a person below a
+  confidence of 0.6 (gender) or 0.4 (age) is reported as "not sure".
+
+Why: on images neither model trained on and on labelled CCTV, the SVMs are at chance and the ViT
+loses accuracy on seated, top-down views ([research-plan.md](../research-plan.md), Section 10).
+
 ## Gender Model Architecture
 
-The gender model is a binary classifier based on a Vision Transformer (ViT) backbone. It is implemented in [model.py](file:///e:/projects/Footfall-Analysis/src/training/model.py) as the [GenderClassifier](file:///e:/projects/Footfall-Analysis/src/training/model.py#L9) class.
+The gender model is a binary classifier based on a Vision Transformer (ViT) backbone. It is implemented in [model.py](../../src/training/model.py) as the [GenderClassifier](../../src/training/model.py#L9) class.
 
 ### 1. End-to-End Inference Pipeline
-During video inference, we combine person detection with gender classification:
+The standalone notebook pipeline (`test_model.ipynb`) combines person detection with gender classification:
 1. **Person Detection**: YOLOv8n detects persons in each video frame.
 2. **Crop & Preprocess**: The bounding boxes are cropped and resized to $224 \times 224$ pixels, then normalized using ImageNet mean/standard deviation.
 3. **Gender Classification**: The preprocessed crop is passed through the `GenderClassifier` model to predict the gender (`female` or `male`).
@@ -19,7 +37,7 @@ During video inference, we combine person detection with gender classification:
 
 ### Diagram
 
-Here is the architecture flowchart. You can view the raw mermaid source code in [gender_model_architecture.mmd](file:///e:/projects/Footfall-Analysis/docs/architecture/gender_model_architecture.mmd).
+Here is the architecture flowchart. You can view the raw mermaid source code in [gender_model_architecture.mmd](gender_model_architecture.mmd).
 
 ```mermaid
 flowchart TB
@@ -66,7 +84,7 @@ flowchart TB
 The age model is a four-class classifier based on classical computer vision features (color and texture histograms) with one SVM per age attribute. It is implemented in the `age_classifier_v3.ipynb` notebook, replicating the original PETA benchmark methodology (Deng et al., 2014) rather than a dedicated `model.py` class.
 
 ### 1. End-to-End Inference Pipeline
-During video inference, we combine person detection with age classification:
+The notebook's own video test (`age_classifier_v3.ipynb`) combines person detection with age classification; the integrated pipeline uses the YOLOv8 detections instead:
 1. **Person Detection**: A Faster R-CNN (ResNet-50 FPN) detector detects persons in each video frame.
 2. **Crop & Region Split**: Each bounding box is cropped, then split into horizontal body regions.
 3. **Feature Extraction**: Per region, 16-bin RGB and HSV color histograms plus a uniform LBP texture histogram are computed and L1-normalized, then concatenated into one feature vector per crop.
@@ -80,7 +98,7 @@ During video inference, we combine person detection with age classification:
 
 ### Diagram
 
-Here is the architecture flowchart. You can view the raw mermaid source code in [age_model_architecture.mmd](file:///e:/projects/Footfall-Analysis/docs/architecture/age_model_architecture.mmd).
+Here is the architecture flowchart. You can view the raw mermaid source code in [age_model_architecture.mmd](age_model_architecture.mmd).
 
 ```mermaid
 flowchart TB

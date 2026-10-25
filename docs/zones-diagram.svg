@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" width="960" height="440" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="Schematic of the Zones view">
+<rect width="960" height="440" rx="18" fill="#12142a"/>
+<rect x="20" y="20" width="610" height="400" rx="12" fill="#1b1e36"/>
+<path d="M170 90 L480 90 L620 410 L30 410 Z" fill="#24284a"/>
+<rect x="265" y="46" width="120" height="34" rx="3" fill="#2f3560"/>
+<text x="34" y="42" fill="#a9abc8" font-size="11" letter-spacing="1">CAM 2F-B · REC 16:56:01</text>
+<path d="M91.5 148.1 L184.5 148.1 L201.5 159.2 L108.5 159.2 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M102.0 125.7 L141.1 125.7 L151.3 146.8 L112.2 146.8 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<ellipse cx="131.8" cy="136.3" rx="24.2" ry="11.6" fill="none" stroke="#1f8fe0" stroke-width="2" opacity="0.95"/>
+<ellipse cx="131.8" cy="136.3" rx="35.1" ry="16.8" fill="none" stroke="#1f8fe0" stroke-width="2" opacity="0.55"/>
+<ellipse cx="131.8" cy="136.3" rx="46.0" ry="22.0" fill="none" stroke="#1f8fe0" stroke-width="2" opacity="0.25"/>
+<rect x="115.9" y="110.2" width="31.8" height="13.5" rx="6.8" fill="#1f8fe0"/>
+<text x="131.8" y="119.2" fill="#fff" font-size="7.5" font-weight="600" text-anchor="middle">31:02</text>
+<path d="M148.5 125.7 L187.6 125.7 L197.8 146.8 L158.7 146.8 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="162.4" y="110.2" width="31.8" height="13.5" rx="6.8" fill="#e0405a"/>
+<text x="178.2" y="119.2" fill="#fff" font-size="7.5" font-weight="600" text-anchor="middle">28:40</text>
+<path d="M278.5 148.1 L371.5 148.1 L371.5 159.2 L278.5 159.2 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M282.2 125.7 L321.3 125.7 L321.3 146.8 L282.2 146.8 Z" fill="#14a06a" fill-opacity="0.22" stroke="#14a06a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="288.0" y="110.2" width="27.4" height="13.5" rx="6.8" fill="#14a06a"/>
+<text x="301.8" y="119.2" fill="#fff" font-size="7.5" font-weight="600" text-anchor="middle">Free</text>
+<path d="M328.7 125.7 L367.8 125.7 L367.8 146.8 L328.7 146.8 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="332.4" y="110.2" width="31.8" height="13.5" rx="6.8" fill="#e0405a"/>
+<text x="348.2" y="119.2" fill="#fff" font-size="7.5" font-weight="600" text-anchor="middle">29:15</text>
+<path d="M465.5 148.1 L558.5 148.1 L541.5 159.2 L448.5 159.2 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M462.4 125.7 L501.5 125.7 L491.3 146.8 L452.2 146.8 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="455.9" y="110.2" width="31.8" height="13.5" rx="6.8" fill="#e0405a"/>
+<text x="471.8" y="119.2" fill="#fff" font-size="7.5" font-weight="600" text-anchor="middle">25:51</text>
+<path d="M508.9 125.7 L548.0 125.7 L537.8 146.8 L498.7 146.8 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="500.2" y="110.2" width="36.1" height="13.5" rx="6.8" fill="#e0405a"/>
+<text x="518.2" y="119.2" fill="#fff" font-size="7.5" font-weight="600" text-anchor="middle">≥ 9:41</text>
+<path d="M58.0 255.5 L179.5 255.5 L198.2 270.1 L76.8 270.1 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M70.4 226.4 L121.4 226.4 L132.6 253.9 L81.6 253.9 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="88.3" y="208.9" width="37.6" height="15.5" rx="7.8" fill="#e0405a"/>
+<text x="107.1" y="219.9" fill="#fff" font-size="9.5" font-weight="600" text-anchor="middle">18:22</text>
+<path d="M131.1 226.4 L182.1 226.4 L193.4 253.9 L142.4 253.9 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="151.8" y="208.9" width="32.1" height="15.5" rx="7.8" fill="#e0405a"/>
+<text x="167.9" y="219.9" fill="#fff" font-size="9.5" font-weight="600" text-anchor="middle">9:12</text>
+<path d="M264.2 255.5 L385.8 255.5 L385.8 270.1 L264.2 270.1 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M269.1 226.4 L320.1 226.4 L320.1 253.9 L269.1 253.9 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="275.8" y="208.9" width="37.6" height="15.5" rx="7.8" fill="#e0405a"/>
+<text x="294.6" y="219.9" fill="#fff" font-size="9.5" font-weight="600" text-anchor="middle">26:03</text>
+<path d="M329.9 226.4 L380.9 226.4 L380.9 253.9 L329.9 253.9 Z" fill="#14a06a" fill-opacity="0.22" stroke="#14a06a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="339.3" y="208.9" width="32.1" height="15.5" rx="7.8" fill="#14a06a"/>
+<text x="355.4" y="219.9" fill="#fff" font-size="9.5" font-weight="600" text-anchor="middle">Free</text>
+<path d="M470.5 255.5 L592.0 255.5 L573.2 270.1 L451.8 270.1 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M467.9 226.4 L518.9 226.4 L507.6 253.9 L456.6 253.9 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="463.3" y="208.9" width="37.6" height="15.5" rx="7.8" fill="#e0405a"/>
+<text x="482.1" y="219.9" fill="#fff" font-size="9.5" font-weight="600" text-anchor="middle">12:47</text>
+<path d="M528.6 226.4 L579.6 226.4 L568.4 253.9 L517.4 253.9 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="524.1" y="208.9" width="37.6" height="15.5" rx="7.8" fill="#e0405a"/>
+<text x="542.9" y="219.9" fill="#fff" font-size="9.5" font-weight="600" text-anchor="middle">22:19</text>
+<path d="M24.5 363.0 L174.5 363.0 L195.0 381.0 L45.0 381.0 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M38.7 327.0 L101.7 327.0 L114.0 361.0 L51.0 361.0 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="57.5" y="307.5" width="50.0" height="17.5" rx="8.8" fill="#e0405a"/>
+<text x="82.5" y="320.5" fill="#fff" font-size="11.5" font-weight="600" text-anchor="middle">≥ 9:41</text>
+<path d="M113.7 327.0 L176.7 327.0 L189.0 361.0 L126.0 361.0 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="135.8" y="307.5" width="43.3" height="17.5" rx="8.8" fill="#e0405a"/>
+<text x="157.5" y="320.5" fill="#fff" font-size="11.5" font-weight="600" text-anchor="middle">27:30</text>
+<path d="M250.0 363.0 L400.0 363.0 L400.0 381.0 L250.0 381.0 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M256.0 327.0 L319.0 327.0 L319.0 361.0 L256.0 361.0 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="265.8" y="307.5" width="43.3" height="17.5" rx="8.8" fill="#e0405a"/>
+<text x="287.5" y="320.5" fill="#fff" font-size="11.5" font-weight="600" text-anchor="middle">16:08</text>
+<path d="M331.0 327.0 L394.0 327.0 L394.0 361.0 L331.0 361.0 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="340.8" y="307.5" width="43.3" height="17.5" rx="8.8" fill="#e0405a"/>
+<text x="362.5" y="320.5" fill="#fff" font-size="11.5" font-weight="600" text-anchor="middle">24:55</text>
+<path d="M475.5 363.0 L625.5 363.0 L605.0 381.0 L455.0 381.0 Z" fill="#3a4070" stroke="#4d548a" stroke-width="1"/>
+<path d="M473.3 327.0 L536.3 327.0 L524.0 361.0 L461.0 361.0 Z" fill="#14a06a" fill-opacity="0.22" stroke="#14a06a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="474.2" y="307.5" width="36.7" height="17.5" rx="8.8" fill="#14a06a"/>
+<text x="492.5" y="320.5" fill="#fff" font-size="11.5" font-weight="600" text-anchor="middle">Free</text>
+<path d="M548.3 327.0 L611.3 327.0 L599.0 361.0 L536.0 361.0 Z" fill="#e0405a" fill-opacity="0.22" stroke="#e0405a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="545.8" y="307.5" width="43.3" height="17.5" rx="8.8" fill="#e0405a"/>
+<text x="567.5" y="320.5" fill="#fff" font-size="11.5" font-weight="600" text-anchor="middle">30:11</text>
+<rect x="650" y="20" width="290" height="400" rx="12" fill="#1b1e36"/>
+<text x="670" y="56" fill="#a9abc8" font-size="11" letter-spacing="1.2">SEATS</text>
+<text x="670" y="94" fill="#14a06a" font-size="30" font-weight="700">3</text>
+<text x="694" y="94" fill="#f5f4fb" font-size="13">free</text>
+<text x="770" y="94" fill="#e0405a" font-size="30" font-weight="700">15</text>
+<text x="810" y="94" fill="#f5f4fb" font-size="13">taken</text>
+<line x1="670" y1="114" x2="920" y2="114" stroke="#30355c"/>
+<text x="670" y="142" fill="#a9abc8" font-size="11" letter-spacing="1.2">NEXT TO FREE UP</text>
+<circle cx="684" cy="170" r="9" fill="none" stroke="#1f8fe0" stroke-width="2"/>
+<circle cx="684" cy="170" r="15" fill="none" stroke="#1f8fe0" stroke-width="1.5" opacity="0.45"/>
+<text x="710" y="167" fill="#f5f4fb" font-size="16" font-weight="700">Seat 1</text>
+<text x="710" y="186" fill="#a9abc8" font-size="12">taken 31:02 · about 2 min left</text>
+<text x="670" y="220" fill="#a9abc8" font-size="11" letter-spacing="1.2">THEN</text>
+<text x="670" y="244" fill="#f5f4fb" font-size="13">Seat 18</text>
+<text x="920" y="244" fill="#a9abc8" font-size="12" text-anchor="end">3 min</text>
+<text x="670" y="268" fill="#f5f4fb" font-size="13">Seat 4</text>
+<text x="920" y="268" fill="#a9abc8" font-size="12" text-anchor="end">4 min</text>
+<text x="670" y="292" fill="#f5f4fb" font-size="13">Seat 2</text>
+<text x="920" y="292" fill="#a9abc8" font-size="12" text-anchor="end">6 min</text>
+<text x="670" y="336" fill="#a9abc8" font-size="11" letter-spacing="1.2">FREE NOW</text>
+<rect x="670" y="350" width="74" height="26" rx="13" fill="#14a06a" fill-opacity="0.18" stroke="#14a06a"/>
+<text x="707" y="367" fill="#f5f4fb" font-size="12" text-anchor="middle">Seat 3</text>
+<rect x="754" y="350" width="74" height="26" rx="13" fill="#14a06a" fill-opacity="0.18" stroke="#14a06a"/>
+<text x="791" y="367" fill="#f5f4fb" font-size="12" text-anchor="middle">Seat 10</text>
+<rect x="838" y="350" width="74" height="26" rx="13" fill="#14a06a" fill-opacity="0.18" stroke="#14a06a"/>
+<text x="875" y="367" fill="#f5f4fb" font-size="12" text-anchor="middle">Seat 17</text>
+<text x="670" y="404" fill="#a9abc8" font-size="10.5">Schematic, not footage · ≥ = began before the recording</text>
+</svg>

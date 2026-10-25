@@ -1,0 +1,58 @@
+{
+ "meta": {
+  "commit": "0ea3f88",
+  "date": "2026-10-25T20:45:26",
+  "models": [],
+  "seeds": [],
+  "run": "djsce-cr22-2026-09-14",
+  "stride": 5,
+  "every": 10
+ },
+ "same_person": {
+  "pairs": 78394,
+  "percentiles": {
+   "1": 0.442,
+   "5": 0.637,
+   "10": 0.748,
+   "25": 0.892,
+   "50": 0.956
+  }
+ },
+ "neighbours": {
+  "pairs": 4435,
+  "percentiles": {
+   "50": 0.118,
+   "75": 0.23,
+   "90": 0.397,
+   "95": 0.449,
+   "99": 0.489
+  }
+ },
+ "rows": [
+  {
+   "iou": 0.3,
+   "same_person_kept": 0.9994,
+   "neighbour_pairs_at_or_above": 0.1894
+  },
+  {
+   "iou": 0.4,
+   "same_person_kept": 0.9934,
+   "neighbour_pairs_at_or_above": 0.0961
+  },
+  {
+   "iou": 0.5,
+   "same_person_kept": 0.9834,
+   "neighbour_pairs_at_or_above": 0.0009
+  },
+  {
+   "iou": 0.55,
+   "same_person_kept": 0.9738,
+   "neighbour_pairs_at_or_above": 0.0
+  },
+  {
+   "iou": 0.6,
+   "same_person_kept": 0.9618,
+   "neighbour_pairs_at_or_above": 0.0
+  }
+ ]
+}

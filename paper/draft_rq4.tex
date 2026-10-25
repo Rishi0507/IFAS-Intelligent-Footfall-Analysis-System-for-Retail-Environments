@@ -1,0 +1,43 @@
+% RQ4 (zone occupancy) built on its own, so it can be read and checked before
+% the joint 8-page paper exists.
+%
+% Build:   tectonic draft_rq4.tex      (or upload paper/ to Overleaf)
+% Numbers: python figures/make_figures.py   (writes figures/rq4_numbers.tex and
+%          figures/rq4_zones.pdf from results/rq4_zones.json and
+%          results/rq4_detection.json; a missing number prints as ??)
+%
+% The preamble is a copy of ifas.tex's, so the section drops into the joint
+% paper unchanged.
+\documentclass[conference]{IEEEtran}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,chains,positioning,decorations.pathreplacing,calc}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{figures/}}
+
+\definecolor{ink}{HTML}{1B1F3B}
+\definecolor{cool}{HTML}{2A6FDC}
+\definecolor{warm}{HTML}{E0602A}
+
+\begin{document}
+
+\title{RQ4: Which Seats Are Taken? Zone Occupancy from One Fixed Camera\\(draft for the research rewrite)}
+\author{\IEEEauthorblockN{IFAS team}}
+\maketitle
+
+\input{sections/rq4}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

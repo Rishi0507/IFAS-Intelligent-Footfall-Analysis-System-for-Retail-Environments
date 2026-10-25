@@ -1,0 +1,78 @@
+% Held-out identities and CCTV labels: which classifier to trust, and when to
+% say "not sure". Every number is an \attr{key} macro that make_figures.py
+% writes to figures/attr_numbers.tex from results/attributes.json,
+% label_check_before.json, identity_gap.json and rq1_gap.json. A missing
+% number prints as ?? in bold.
+
+\providecommand{\attr}[1]{%
+  \ifcsname attr/#1\endcsname\csname attr/#1\endcsname\else\textbf{??}\fi}
+\InputIfFileExists{figures/attr_numbers.tex}{}{}
+
+\subsection{Held-out Identities and CCTV Labels}
+\label{sec:cctv}
+The PETA figures above come from image-level splits, in which the same person can
+appear in training and test. We therefore re-scored both released models on PETA
+images they never trained on, and on a 9.7-minute recording from a ceiling camera
+in a lecture room with about forty seated students, viewed from above and behind.
+That recording was labelled by an AI annotator: gender and age group for each of
+its tracks, from contact sheets of the crops the pipeline classified, with people
+it could not judge (two people in the crops, only hands visible) marked unsure.
+These labels are not human ground truth; they compare models on the same people,
+and are to be confirmed by two human annotators.
+
+\emph{What went wrong.} Before any change, the pipeline's per-person gender label
+was right \attr{before/gender} of the time over \attr{before/gender/n} labelled
+people, and the age group \attr{before/age}. Looking at the errors showed four
+causes. All of a person's votes came from their first few seconds, so one awkward
+angle decided the label. Track numbers moved between seated neighbours: the same
+person's box overlaps its previous box by an IoU of at least 0.5 in
+\attr{gap/same05}\% of samples, but \attr{gap/neighbour03}\% of overlapping
+neighbour pairs also clear the old threshold of 0.3, while only
+\attr{gap/neighbour05}\% reach 0.5. Some crops showed two people. And both
+classifiers were weak on seated, top-down views.
+
+\emph{Which classifier.} Table~\ref{tab:cctv} compares the fine-tuned ViT, CLIP
+ViT-B/32~\cite{radford2021clip} used zero-shot (asked whether a crop is a CCTV image
+of a man or of a woman, with no training), and the average of the two. The ViT is best on PETA's
+small crops and CLIP on the 1080p lecture crops; their average is the best on
+both, with a balanced accuracy of \attr{gender/cuhk/ensemble/bal} on CUHK against
+\attr{gender/cuhk/vit/bal} for the ViT alone, and \attr{gender/room/ensemble/acc}
+accuracy on the lecture room against \attr{gender/room/vit/acc}. For age, CLIP
+zero-shot with coarse prompts (a young person, an adult, a middle-aged person, an
+old person) reaches \attr{age/peta/clip/bal} balanced accuracy over PETA's four
+groups, against \attr{age/cuhk/svm/bal} for the SVMs on CUHK. Logistic heads
+fitted on CLIP features of PETA's training split did worse on the lecture room
+than zero-shot: PETA's small, standing pedestrians do not look like CCTV of
+seated people. Almost every labelled age in the lecture room is 16 to 30, so the
+age results there only test that group.
+
+\begin{table}[t]
+\caption{Gender and age per person. PETA rows use human labels on images the
+models never trained on; lecture-room rows use the AI annotator's labels.}
+\label{tab:cctv}
+\centering
+\begin{tabular}{@{}llcc@{}}
+\toprule
+Task & Model & PETA & Lecture room \\
+\midrule
+Gender & Fine-tuned ViT      & \attr{gender/cuhk/vit/bal}      & \attr{gender/room/vit/acc} \\
+       & CLIP zero-shot      & \attr{gender/cuhk/clip/bal}     & \attr{gender/room/clip/acc} \\
+       & Average of the two  & \attr{gender/cuhk/ensemble/bal} & \attr{gender/room/ensemble/acc} \\
+Age    & Colour/texture SVMs & \attr{age/cuhk/svm/bal}         & \attr{age/room/svm/acc} \\
+       & CLIP zero-shot      & \attr{age/peta/clip/bal}        & \attr{age/room/clip/acc} \\
+\midrule
+\multicolumn{4}{@{}l}{PETA: balanced accuracy, CUHK test images for gender and the}\\
+\multicolumn{4}{@{}l}{ViT; all test identities for CLIP age. Lecture room: accuracy.}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\emph{Saying ``not sure''.} Leaving people whose pooled confidence is below a
+threshold without a label trades coverage for accuracy. On the lecture room, the
+averaged gender model at a threshold of 0.6 labels \attr{gender/room/ensemble/kept0.6}\%
+of people with \attr{gender/room/ensemble/acc0.6}\% accuracy, and CLIP age at 0.4
+labels \attr{age/room/clip/kept0.4}\% with \attr{age/room/clip/acc0.4}\%. These
+are the pipeline's defaults, together with the other fixes of
+Section~\ref{sec:pooling}: votes spread over the whole stay, no votes on crops
+showing two people, matching at an IoU of 0.5 in crowded rooms, and an unsure
+label for a person whose votes disagree between the two halves of their stay.

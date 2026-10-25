@@ -2,7 +2,8 @@
 
 This is the plan for turning IFAS from a system description into a research paper. All the code
 it calls for is now written and tested; what is left needs people, footage or a GPU. Section 8
-says which is which and how to run each step. The work is split evenly between two people,
+says which is which and how to run each step for RQ1 to RQ3, and Section 9 does the same for
+RQ4 (zone occupancy), added later. The work is split evenly between two people,
 **Person A** and **Person B**, with a few shared tasks. Fill in the names below before starting.
 
 | Role | Owns | Name |
@@ -111,6 +112,28 @@ truncated and occluded people.
 
 Crowd-level "density flow" from optical flow is out of scope. It does not answer any of the
 three questions. Farneback is used where it measures something testable: motion blur per crop.
+
+### RQ4: Which seats are taken, and which frees up next?
+
+Added on 2026-10-25 (Section 9). RQ1 to RQ3 are about *who* is in view. In a restaurant, a
+library or a lecture hall the useful question is often *which places are in use*: which tables
+are free, how long each has been taken, which will free up next. That needs no identity and no
+attribute model. Measure, from one fixed camera:
+
+1. how much raw seat state flickers, and how much temporal smoothing (bridge short absences,
+   drop short stays) and spatial hysteresis (a leaning person stays in their seat) remove;
+2. which anchor point (feet, lower body, centre, box overlap) places seated people in seats;
+3. how sparsely the video can be sampled before the answer changes (detection is the cost);
+4. whether seats can be found automatically from where people sat still;
+5. whether a Kaplan-Meier estimate of stay length names the next seat to free up better than
+   "taken longest" and chance, evaluated causally;
+6. with occupancy labels: accuracy, precision, recall, F1 and kappa of the smoothed state,
+   with intervals that resample whole zones, and agreement between annotators.
+
+*Hypothesis H4:* occupancy is far more robust to identity errors than footfall, because it
+never asks whether two sightings are the same person.
+
+Method and how to run it: [zones.md](zones.md).
 
 ## 3. Shared interfaces
 
@@ -301,3 +324,107 @@ What Person A still has to do, in order:
    gain (A6).
 
 The order of work in Section 5 still holds. The first real step is A3: recording.
+
+## 9. RQ4 status (2026-10-25)
+
+The code is done and tested (`tests/test_zones.py`, `tests/test_research_zones.py`), and has
+run end to end on one 9.7-minute lecture-room recording (about forty students; DJSCE, camera
+2F-B-CR22). **Its permission row in `docs/research-data.md` must be filled in by the team
+before any number from it is submitted.** No occupancy labels exist yet.
+
+| Piece | Where |
+| :--- | :--- |
+| Zones, anchors, hysteresis, smoothing, censoring, Kaplan-Meier, next-free evaluation, automatic seats | `src/inference/zones.py`; `python -m src.inference.zones <run>` |
+| Tiled detection for dense rooms | `--tiles 2x2` in the pipeline (`detect_people`, `merge_boxes`) |
+| Per-track boxes for recomputing zones without a model | `track_boxes.json`, written by every run |
+| Workbench | the Zones tab (overlay, board, Gantt, utilisation, survival curve, alerts, editor, method and validity cards), zones on the 3D floor, `zones-label.html` |
+| Video like the restaurant demo | `scripts/render_zones.py` |
+| Label-free checks and scoring against labels | `src/research/zone_eval.py`, `scripts/research/zone_study.py` -> `paper/results/rq4_zones.json` |
+| Detection in a dense room | `scripts/research/detector_study.py` -> `paper/results/rq4_detection.json` |
+| Paper | `paper/sections/rq4.tex`, built alone by `paper/draft_rq4.tex`; numbers from `figures/rq4_numbers.tex` |
+
+First results (no labels, so stability and consistency only):
+
+* Smoothing cuts seat-state flicker ten-fold, from 7.10 to 0.71 changes per zone-minute;
+  hysteresis removes 37% of the raw changes without changing occupancy.
+* The box centre puts 29.4% of seated people's sightings in no seat, the lower-body anchor 6.4%.
+* Sampling every 0.8 s instead of 0.2 s keeps 95.9% of seat states; 3.2 s keeps 88.4%.
+* 231 tracks for at most 45 people in view (5.1 per person): footfall from this recording is
+  inflated five-fold, occupancy is not (37 seats taken at the end, about 38 people visible).
+* Nobody left during the lecture, so the next-free rule could not be tested: every free-up was
+  a detection artefact.
+
+Still to do, in order:
+
+1. Record the permission for the lecture-room footage (or replace it with footage that has it).
+2. Two people label occupancy on the saved frames in `zones-label.html`; then
+   `zone_study.py` scores the smoothed state and reports kappa.
+3. Draw the seats by hand once and compare them with the automatic ones.
+4. Record footage where people come and go (a canteen or library) for the next-free rule.
+
+## 10. Labels on CCTV, and which classifier to trust (2026-10-25)
+
+Prompted by visible mistakes on the lecture-room recording (a boy labelled female, students
+labelled 46-60), every person and every seat in it was labelled, and the causes were traced.
+
+**Labels.** An AI annotator (Claude) labelled the recording: gender and age group for all 231
+tracks from contact sheets of their crops (`labels_claude-ai.json`: 121 male, 46 female, 64
+unsure, 174 with an age group), and taken / free / unsure for the 50 seats on the 20 saved frames
+(`zone_labels_claude-ai.json`: 860 labels). **These are not human ground truth.** They are good
+enough to compare models and settings on the same people, which is how they are used here; every
+number below must be confirmed by two people (S2 protocol) before it is reported. Ages in a college
+lecture are almost all 16-30, so the age results only test that group.
+
+**Why labels were wrong** (each cause measured on the recording):
+
+| Cause | Evidence | Fix |
+| :--- | :--- | :--- |
+| All 12 votes came from a person's first ~5 s | e.g. track 7: followed for 274 s, every vote at 0-4 s | votes spread over the stay, the gap doubling every four votes up to 45 s, at most 24 (`vote_spread`) |
+| Track numbers drifted between seated neighbours | the same person's box overlaps itself by IoU >= 0.5 between samples 98.3% of the time, against 0.1% of overlapping neighbour pairs (99th percentile 0.49), yet matching accepted 0.3 (`identity_gap.py`) | matching at IoU 0.5 in tiled (crowded) mode (`match_iou`) |
+| Crops showing two people | track 171's first votes show a second student above the first | no vote on a crop overlapping another person's box by IoU > 0.3 (`max_vote_overlap`) |
+| Weak classifiers on seated, top-down views | the ViT called a teal-shirted boy female at 98% | the ensemble below, and "not sure" under a confidence threshold |
+| Boxes drawn with the whole stay's label | a box that changed hands kept the old label | the video shows each box's label from its latest votes (`Track.recent`); a track whose two halves disagree is reported as unsure |
+
+A colour-histogram appearance check was also tried and dropped: overlapping neighbours share
+pixels, so their histograms were closer than one person's across 0.2 s.
+
+**Which classifier** (`scripts/research/attribute_study.py` -> `paper/results/attributes.json`):
+
+| Gender, per person | PETA CUHK test (human labels) | Lecture room (AI labels) |
+| :--- | :--- | :--- |
+| Fine-tuned ViT (before) | 0.902 accuracy, 0.875 balanced | 0.820, 0.728 |
+| CLIP zero-shot | 0.724, 0.765 | 0.838, 0.841 |
+| **Average of the two (now the default)** | **0.902, 0.888** | **0.874, 0.805** |
+
+| Age, per person | PETA test, 4 groups (human labels) | Lecture room (AI labels, all 16-30) |
+| :--- | :--- | :--- |
+| Colour/texture SVMs (before) | 0.238 balanced on CUHK (`rq1_gap.json`) | 0.529 |
+| **CLIP zero-shot (now the default)** | **0.361 balanced** | **0.828** |
+
+Heads fitted on CLIP features of PETA's training split (`scripts/research/clip_probe.py`) did worse
+than zero-shot on the lecture room (gender 0.772, age 0.207 per person): PETA's small standing
+pedestrians do not look like CCTV of seated people. Zero-shot CLIP is weak on PETA's tiny crops and
+strong on 1080p CCTV crops; the fine-tuned ViT is the reverse; averaging keeps the best of both.
+
+**Not sure instead of wrong.** Leaving people under a confidence threshold as unknown: gender at
+0.6 keeps 82% of people at 92.7% accuracy (balanced 0.845); age at 0.4 keeps 72% at 97.6%. These
+are the pipeline's defaults (`min_gender_conf`, `min_age_conf`).
+
+**Seats against the labels** (`zone_study.py`): precision 0.96 [0.88, 1.00] (a seat reported
+taken is taken), recall 0.71 [0.63, 0.79] (29% of taken seat-moments read free, because the
+detector misses people in the back rows), Cohen's kappa 0.10 (the base rate is 94% taken).
+Bridging gaps up to 30 s raises recall to 0.78 at the same precision. YOLOv8s with tiles finds 21.8
+people per frame against 14.3 for YOLOv8n, at 2.1 s per frame. A full re-run of the recording with
+YOLOv8s and every fix above has not been completed yet (about two hours on a laptop CPU); until it is,
+the seat and per-person numbers here describe the earlier run (YOLOv8n with tiles, ViT and SVMs), and
+the classifier comparison re-scores that run's crops.
+
+**In the paper.** `paper/ifas.tex` reports this section as *Held-out Identities and CCTV Labels*
+(`paper/sections/cctv.tex`), with every number written by `make_figures.py` into
+`figures/attr_numbers.tex`, and includes the zone-occupancy study (`sections/rq4.tex`).
+
+**Before and after, per person.** `scripts/research/label_check.py` scores the label each person ends
+up with in a run (after pooling and "not sure") against labelled people. On the earlier run, before the
+fixes: gender 0.820 [0.760, 0.874] and age 0.523 [0.443, 0.592] with every person labelled
+(`paper/results/label_check_before.json`). The same script scores the re-run once it exists.
+

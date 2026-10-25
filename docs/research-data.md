@@ -154,6 +154,35 @@ The steps, in order:
        --gender-repo abhshkp/footfall-analysis-vit-stage1 --age-bundle abhshkp/footfall-analysis-age-svm
    ```
 
+## Zone occupancy footage (RQ4)
+
+Footage for the zone-occupancy study ([zones.md](zones.md)). Nobody in it is classified for the
+paper and no crop of it is labelled, but it still shows identifiable people, so the same rules
+apply: written permission before any result is reported, footage and frames stay out of git
+(`*.avi`, `*.mp4` and `outputs/` are ignored), and renders are not shared outside the team.
+
+| Recording | Site and camera | Recorded | Length | Permission (who, date, where the signed copy is) | Use |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Recorder export `MUM <recorder> DJSCE 2_XRN-3010A_CH021(<recorder>)_20260914_165019_170000_ID_0100.avi` (the recorder's network address is left out here) | DJSCE, lecture room, camera 2F-B-CR22 (recorder channel 21) | 2026-09-14, 16:50:19 to 17:00:00 | 9 min 41 s, 1920x1080, 25 fps | **To be filled in by the team.** Not recorded yet; no number from this recording goes into a submission until it is | RQ4 development and first results |
+
+The camera's on-screen clock runs 42 s ahead of the recorder's file-name time (it reads 16:51:01
+on the first frame, which the file name puts at 16:50:19). The pipeline takes the file-name time
+(`meta.captured_from: "file name"`); quote times from the on-screen clock with that offset.
+
+Occupancy labels, when they exist, are `zone_labels_<annotator>.json` in the run folder, written
+by `zones-label.html`. Two annotators label the same frames independently; `zone_study.py`
+reports Cohen's kappa between them and scores against their majority.
+
+## Labels made by an AI annotator
+
+The lecture-room run carries labels from an AI annotator (Claude): `labels_claude-ai.json` (gender
+and age group per track, from contact sheets of each track's crops) and `zone_labels_claude-ai.json`
+(taken / free / unsure per seat on the 20 saved frames, seat outlines only, no model output shown).
+Each file says so in its `note` field and in every per-person note. Use them to compare models and
+settings on the same people (docs/research-plan.md §10). They do not replace the two human
+annotators below: no number based on them goes into the paper until people have labelled the same
+items and agreement has been measured.
+
 ## Labelling protocol (task S2)
 
 * Each annotator labels every test person independently in the dashboard's labelling page
