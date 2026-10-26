@@ -536,7 +536,19 @@ different labels, which happens when a box passes from one person to another.
 The annotated video draws each box with the label of its latest votes, not of
 the whole stay.
 
+The vote cap keeps the cost bounded but front-loads the votes: 24 votes with a
+doubling gap span roughly the first 100\,s of a stay, so a box that later passes
+to a neighbour keeps a label measured on someone else. A second pass, run after
+the pipeline on the stored boxes and the original video, removes that limit. It
+classifies every person every few seconds of their whole stay, skipping crops
+that overlap another box by an IoU above 0.3, labels each box in the annotated
+video from that person's votes within a few seconds of the moment, so the label
+follows whoever the box holds, and pools each person's label over all their
+votes with the rules above. The track data is untouched, so every count stays
+the same; only the labels change.
+
 \subsection{Analytics and Dashboard}
+\label{sec:dashboard}
 For every track IFAS records when the person was first and last seen and the dwell
 time in between, and sorts the dwell time into one of the five tiers in
 Table~\ref{tab:tiers}. The video is also divided into 5\,s bins, and for each bin
@@ -571,15 +583,23 @@ per hour. This way a three-minute clip cannot outweigh a three-hour export. A da
 is only included if it has at least five minutes of footage, and a trend is drawn
 only once three such days are available.
 
-The dashboard shows the results at two levels of detail. The simple view, meant for
-the store manager, summarises the findings in plain sentences alongside a few
-headline charts. The detailed view adds filters by gender, age group, dwell tier
-and confidence, a table of every tracked person and the confidence distributions
-of both models. A separate guide explains each recording in plain words for the
-person who runs the place: how busy it was, when people arrived, whether they
-stopped, where they went, how the seats were used and who visited, each with
-suggestions, the numbers behind them and how far they can be trusted. A zones view
-shows the seats and tables of Section~\ref{sec:rq4} on the camera picture.
+The workbench has two panels. \emph{Insights}, for the person who runs the
+place, is one card per claim: a figure, one line, one thing to try and a
+confidence (solid, rough guide or unreliable) with its reason, beside the evidence
+from the recording. For ``how busy it was'' the evidence is the frame the peak was
+counted on, with a solid box for each person detected in that frame and a dashed
+box, at the last place they were seen, for each person counted but hidden for a
+moment, so the boxes add up to the reported number. ``Where people went'' lays the
+heat map over a frame; ``who visited'' shows the people the camera saw most
+clearly, each in their clearest crop with the system's label and its vote count,
+or ``not sure''. Numbers a recording cannot support are grouped in a card of their
+own with the reason, and for split tracks the evidence is crops of both ends of
+tracks that restarted in place. Any frame opens the video at that moment.
+\emph{Data}, for analysts, holds every chart and table: an overview, a 3D replay
+of the floor, age and gender breakdowns, trends across recordings, the annotated
+video and a per-person log, with filters by gender, age group, dwell tier and
+confidence. Seat and table occupancy (Section~\ref{sec:rq4}) is computed with
+every run but not shown in the workbench.
 
 % ---------------------------------------------------------------------------
 \section{Experiments}

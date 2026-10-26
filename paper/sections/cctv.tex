@@ -1,7 +1,7 @@
 % Held-out identities and CCTV labels: which classifier to trust, and when to
 % say "not sure". Every number is an \attr{key} macro that make_figures.py
 % writes to figures/attr_numbers.tex from results/attributes.json,
-% label_check_before.json, identity_gap.json and rq1_gap.json. A missing
+% label_check_before.json, identity_gap.json, identity_drift.json and rq1_gap.json. A missing
 % number prints as ?? in bold.
 
 \providecommand{\attr}[1]{%
@@ -76,3 +76,19 @@ are the pipeline's defaults, together with the other fixes of
 Section~\ref{sec:pooling}: votes spread over the whole stay, no votes on crops
 showing two people, matching at an IoU of 0.5 in crowded rooms, and an unsure
 label for a person whose votes disagree between the two halves of their stay.
+
+\emph{Boxes that change hands.} Even at an IoU of 0.5, a track does not always
+stay on its person. In the lecture recording \attr{drift/wandered} of
+\attr{drift/tracks} tracks move more than \attr{drift/widths} box widths from
+where they began, in a room where almost everyone stays seated; the cases we
+inspected were boxes that widened over two students and then followed the
+neighbour. And \attr{drift/handoffs} times a track ended and a new one began in
+the same spot (boxes overlapping by an IoU of at least 0.5) within
+\attr{drift/gap}\,s: one person lost and counted again. The first explains the
+labels that sat on the wrong person in the annotated video, since a capped,
+front-loaded vote describes whoever the box held at the start; the second is
+one source of the inflated track count of Section~\ref{sec:rq4}. Both are why
+the workbench reports people in view rather than footfall for crowded rooms, and
+shows crops of such restarts as its evidence (Section~\ref{sec:dashboard}).
+Labelling from votes around each moment (Section~\ref{sec:pooling}) is our
+answer for the video; it has not yet been scored against the labels.

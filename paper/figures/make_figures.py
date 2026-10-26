@@ -698,9 +698,9 @@ def rq4_numbers(results=RESULTS, out=OUT):
 def attr_numbers(results=RESULTS, out=OUT):
     r"""paper/figures/attr_numbers.tex: every number the held-out and CCTV-label
     section quotes, as \attr{key}, from attributes.json, label_check_before.json,
-    identity_gap.json and rq1_gap.json. Missing numbers print as ??."""
+    identity_gap.json, identity_drift.json and rq1_gap.json. Missing numbers print as ??."""
     lines = ["% Written by make_figures.py from results/attributes.json, label_check_before.json,",
-             "% identity_gap.json and rq1_gap.json. Do not edit."]
+             "% identity_gap.json, identity_drift.json and rq1_gap.json. Do not edit."]
 
     def put(key, val):
         lines.append(f"\\expandafter\\def\\csname attr/{key}\\endcsname{{{val}}}")
@@ -738,6 +738,13 @@ def attr_numbers(results=RESULTS, out=OUT):
         for r in rq1["rows"]:
             if r.get("task") == "age" and r.get("balanced_accuracy"):
                 put("age/cuhk/svm/bal", f3(r["balanced_accuracy"]["value"]))
+    drift = _results("identity_drift.json", results)
+    if drift:
+        put("drift/tracks", drift["tracks"])
+        put("drift/wandered", drift["wandered"])
+        put("drift/widths", f"{drift['meta']['widths']:g}")
+        put("drift/handoffs", drift["handoffs"])
+        put("drift/gap", f"{drift['meta']['max_gap_sec']:.0f}")
     (out / "attr_numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
