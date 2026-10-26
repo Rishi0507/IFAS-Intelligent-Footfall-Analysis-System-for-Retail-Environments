@@ -9,8 +9,10 @@ question: *which of these measurements hold up on real CCTV, and why?*
 Each measurement is treated as a claim to test against held-out data, with
 confidence intervals, rather than a number to display. So far the answers are
 mixed, and the mixed answers are the findings. The gender model loses about nine
-points of accuracy on a PETA subset it was never trained on. The age model is at
-chance once its classes are balanced. Footfall counts inflate five-fold in a crowded room.
+points of accuracy on a PETA subset it was never trained on. The original age
+model (colour and texture SVMs) is at chance once its classes are balanced, so
+the pipeline no longer uses it: CLIP zero-shot answers age, and gender is the
+fine-tuned ViT averaged with CLIP. Footfall counts inflate five-fold in a crowded room.
 Zone occupancy, which needs no identity at all, stays consistent with what is
 in the frame. What fixed the visible mistakes was not a bigger model but
 better votes, stricter tracking, two models averaged, and the system saying
@@ -42,7 +44,9 @@ script in `scripts/research/`. Intervals are 95%.
    from an image-level split. New people and a new subset both differ from
    that validation set; RQ1's identity split separates the two.
    (`rq1_gap.json`)
-2. **The age model is at chance once its classes are balanced.** Plain accuracy
+2. **The original age model (the SVMs) is at chance once its classes are
+   balanced**, which is why the pipeline now asks CLIP instead (finding 8; the
+   SVMs remain behind `--attributes vit`). Plain accuracy
    is **0.757**, but balanced accuracy is **0.238 [0.227, 0.250]** for four
    classes (chance is 0.25), and mean per-group accuracy (mA) is **0.493**,
    against **0.835** reported. Its errors fall as crops get sharper (the
@@ -135,11 +139,18 @@ See [docs/zones.md](docs/zones.md).
 pip install -r requirements.txt
 python -m pytest -q                      # the whole suite (229 tests), CPU only, a couple of minutes
 
-# Process a recording (models download from the Hugging Face Hub on first use)
+# Process a recording (models download from the Hugging Face Hub on first use).
+# Default --attributes ensemble: gender = fine-tuned ViT averaged with CLIP
+# ViT-B/32 zero-shot, age = CLIP zero-shot. No SVM is loaded.
 python -m src.inference.pipeline --video clip.mp4 --out outputs/runs/clip1 \
     --gender-repo abhshkp/footfall-analysis-vit-stage2 \
-    --age-bundle abhshkp/footfall-analysis-age-svm \
     [--tiles 2x2] [--stride 5] [--export-crops] [--site S --camera C]
+# The original classifiers instead (ViT alone, colour/texture SVMs for age):
+#   ... --attributes vit --age-bundle abhshkp/footfall-analysis-age-svm
+
+# Label a processed run again from votes through each person's whole stay,
+# with each box in the video labelled from the votes around that moment
+python -m src.inference.relabel --run outputs/runs/clip1 --video clip.mp4
 
 # RQ1: held-out evaluation (PETA identity split; CUHK for the released models)
 python scripts/research/make_peta_split.py --help
@@ -166,15 +177,25 @@ it. RQ2 and RQ3 need a GPU and labelled clips; Section 8 of
 ## The workbench
 
 ```bash
-python scripts/generate_demo_run.py      # a synthetic run, so it opens without weights or footage
 python -m app.server                     # http://127.0.0.1:8000
+python scripts/generate_demo_run.py      # optional: a synthetic store run as well
 ```
+
+The repository ships one real run, `outputs/runs/djsce-cr22-3m00s-3m40s/`: 40 seconds
+of the lecture-room recording (3:00 to 3:40), labelled with the ViT and CLIP averaged
+from votes through each person's stay. Its annotated video is `video.mp4` in that
+folder. It needs no model weights to open. Seat and table occupancy is still computed
+(`src/inference/zones.py`, RQ4) but is not shown in the workbench.
+
+Two panels. **Insights** is for the owner: one card per claim (how busy it was,
+seats, where people went, who visited, arrivals, stops, waits) with one figure,
+one thing to try and how far to trust it, beside the evidence from the recording:
+the frame it was counted on with everyone counted drawn over it, or the people it
+is about. **Data** has every chart and table:
 
 | Tab | What it shows |
 | :--- | :--- |
 | Overview | Headline numbers, findings with sample sizes and 95% intervals, footfall and occupancy over time |
-| Guide | The recording in plain words for the owner: how busy it was, when people came, whether they stopped, where they went, seats, waits, who visited, what to try, and how far to trust each number |
-| Zones | The camera frame with seats and tables, status board, next to free up, stays, utilisation, survival curve, alerts, the zone editor, method settings and validity checks |
 | Floor | A 3D floor to orbit and replay: heat columns, paths and zones |
 | People | Age × gender, dwell and engagement, per-model confidence |
 | Trends | Daily, weekly and monthly comparisons across recordings, per observed hour |
@@ -254,12 +275,13 @@ Checkpoints are too large for git and live on the Hugging Face Hub:
 | Model | Hub repo |
 | :--- | :--- |
 | Gender, stage 1 | `abhshkp/footfall-analysis-vit-stage1` |
-| Gender, stage 2 (pipeline default) | `abhshkp/footfall-analysis-vit-stage2` |
-| Age SVM bundle (`age_classifier_bundle.pkl`, about 36 MB) | `abhshkp/footfall-analysis-age-svm` |
+| Gender, stage 2 (pipeline default, averaged with CLIP) | `abhshkp/footfall-analysis-vit-stage2` |
+| CLIP ViT-B/32, zero-shot gender and age (pipeline default, downloads on first use) | `openai/clip-vit-base-patch32` |
+| Age SVM bundle (`age_classifier_bundle.pkl`, about 36 MB), only with `--attributes vit` | `abhshkp/footfall-analysis-age-svm` |
 
 ```bash
 hf download abhshkp/footfall-analysis-vit-stage2 --local-dir models/hf/abhshkp__footfall-analysis-vit-stage2
-hf download abhshkp/footfall-analysis-age-svm age_classifier_bundle.pkl
+hf download abhshkp/footfall-analysis-age-svm age_classifier_bundle.pkl   # only for --attributes vit
 ```
 
 `transformers` is pinned (finding 4). New checkpoints from RQ2 go to **new**
@@ -292,7 +314,11 @@ Hub repos, so the released ones stay comparable.
 │   ├── inference/          # the system
 │   │   ├── pipeline.py     # video -> annotated MP4, analytics.json, track_boxes.json (tiled detection)
 │   │   ├── tracker.py      # IoU tracker with re-joining
-│   │   ├── models.py       # gender ViT and age SVM wrappers
+│   │   ├── models.py       # gender ViT and (original) age SVM wrappers
+│   │   ├── clip_attrs.py   # CLIP zero-shot gender and age; the ViT + CLIP average
+│   │   ├── relabel.py      # label a run again from whole-stay votes; redraw the video
+│   │   ├── guide.py        # the Insights panel's plain-language claims
+│   │   ├── proof.py        # the evidence behind each claim: frames, boxes, crops
 │   │   ├── analytics.py    # tracks -> the analytics document
 │   │   ├── trends.py       # findings with intervals; daily/weekly/monthly comparisons
 │   │   └── zones.py        # RQ4: zones, anchors, hysteresis, smoothing, survival, automatic seats

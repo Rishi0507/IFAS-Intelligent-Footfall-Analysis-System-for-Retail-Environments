@@ -15,6 +15,11 @@ models/
 # Outputs (regenerate from runs)
 outputs/*
 !outputs/.gitkeep
+# The 40-second demo run ships with the repo; every other run stays local.
+!outputs/runs/
+outputs/runs/*
+!outputs/runs/djsce-cr22-3m00s-3m40s/
+outputs/runs/djsce-cr22-3m00s-3m40s/stills/
 !outputs/ann_frame_*.jpg
 
 # Notebooks
@@ -37,3 +42,6 @@ footage/
 *.mkv
 *.mov
 *.dav
+# except the 40-second demo run's two videos (see outputs/runs/ above)
+!outputs/runs/djsce-cr22-3m00s-3m40s/video.mp4
+!outputs/runs/djsce-cr22-3m00s-3m40s/clean.mp4

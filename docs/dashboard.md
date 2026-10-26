@@ -185,7 +185,7 @@ the file (a notebook, a BI tool, a report).
 | `tracks` | one record per person: id, gender + confidence + vote counts, age + confidence + vote counts, first/last second, dwell, tier, frames, detection confidence, mean box area, entry/exit edge, path type, zone, subsampled trail |
 | `model` | model families, checkpoint ids, the age model's reported mA |
 | `insights` | plain-language findings, each with its sample size and, for shares, a 95% Wilson interval |
-| `guide` | the Guide tab: what kind of place it is, and sections (how busy, arrivals, stopping, where, seats, waits, who, trust) each with a headline, an explanation, suggestions, the numbers behind it and a confidence (solid / rough / unreliable) with the reason. Older runs get one from `GET /api/runs/{id}/guide` |
+| `guide` | the Insights panel (schema 2): what kind of place it is, and sections (how busy, arrivals, stopping, where, seats, waits, who, trust) each with a figure (`stat`, `sub`), one thing to try (`tip`), a confidence (solid / rough / unreliable) with a one-line reason (`brief`) and the full one (`why`), the evidence to show (`proof`), and behind that a headline, an explanation, all suggestions and the numbers. Runs without a schema-2 guide get one from `GET /api/runs/{id}/guide` |
 | `zones` | per zone: polygon, kind, stays, utilisation, turnover; events (taken, freed, long stay, queue wait); a Kaplan-Meier survival curve; the next place to free up and how well that rule did; the label-free checks. See [zones.md](zones.md) |
 
 Each track also carries `gender_unsure` / `age_unsure`: null when the label stands, else why it
@@ -284,21 +284,51 @@ MP4, which is much faster for bulk history.
 
 ## Finding your way around
 
-The dashboard is eight tabs in a glass bar at the top of the page. On a phone the
-tabs move to the bottom of the screen, within reach of a thumb. Keys `1` to `8`
-jump between them and the address bar keeps the tab (`#floor`), so a link opens
-on the right one.
+The dashboard has two panels, switched by **Insights | Data** in the header. The
+choice is remembered per browser, and a first visit opens on Insights.
+
+**Insights** is for whoever runs the place. It is one calm page: a one-sentence
+headline, what kind of place the recording looks like, and one card per claim
+(how busy it was, where people went, who visited, and for a shop arrivals and
+stops). Seat and table occupancy is computed with each run ([zones.md](zones.md))
+but no longer shown in the workbench. There are no tabs and no filters here, so the page
+always describes everyone.
+
+Each card is one figure, one line, one thing to try and how reliable it is
+(solid, rough guide or unreliable), beside the **evidence from the recording**:
+
+| Claim | Evidence |
+| :--- | :--- |
+| How busy it was | The frame at the busiest moment, with everyone counted: a solid box for each person seen in that frame, a dashed one where someone counted was hidden for a moment (at their last box). The boxes add up to the number on the card |
+| Where people went | A frame with the heat map of where people spent time and the share in each third |
+| Who visited | The ten people the camera saw most clearly, each in their clearest crop, with the system's guess and how many pictures voted for it |
+| Arrivals, stops | The first arrivals of the busiest stretch; the shortest, a typical and the longest stay |
+
+Numbers this recording cannot support sit together in a **Not reliable here** card
+with the reason. When the tracker split people, its evidence is both ends of
+tracks that were lost and begun again in the same spot, cut from the frames, so
+anyone can see it is one person counted twice. Click a frame to enlarge it, or
+**Play from here** to open the video at that moment. "Why and how" under each
+card has the full explanation and the numbers.
+
+The evidence comes from `GET /api/runs/{id}/moment?t=` (everyone counted and
+every zone's state at t), `still?t=&w=` (the clean frame), `portraits?tracks=`
+(each person's clearest crop), `handoffs` (tracks restarted in place, with
+`snap?t=&box=` crops of both ends); see `src/inference/proof.py`.
+
+**Data** holds every chart, number and table, in six tabs in a glass bar at the
+top of the page. On a phone the tabs move to the bottom of the screen, within
+reach of a thumb. Keys `1` to `6` jump between them, and the address bar keeps
+the tab (`#floor`, or `#guide` for Insights), so a link opens on the right one.
 
 | Tab | What it answers |
 | :--- | :--- |
 | **Overview** | What happened, in one sentence and four numbers, over a 3D picture of the floor |
-| **Guide** | The same recording in plain words for the owner, with what to try and how far to trust each number |
-| **Zones** | Which seats and tables are taken, for how long, and which frees up next; the zone editor ([zones.md](zones.md)) |
 | **Floor** | Where people stood and how they moved |
 | **People** | Who came in, by age and gender, and how long each group stayed |
 | **Trends** | How this recording compares with the others |
 | **Video** | The annotated footage, with a live count at the playhead |
-| **Log** | Model confidence, run settings and one row per visitor (Detailed only) |
+| **Log** | Model confidence, run settings and one row per visitor |
 
 The recording picker sits beside the logo. It lists every run with its poster
 frame, head count and length, and marks generated samples.
@@ -334,38 +364,19 @@ The same stage is the picture at the top of the Overview. There is one scene,
 moved between the two tabs, so the camera position and the clock carry over.
 
 The People tab has a second scene: one block for each age and gender group. Its
-height is either the head count or the average stay. In Detailed view, clicking
-a block filters the whole dashboard to that group.
+height is either the head count or the average stay. Clicking a block filters
+the whole dashboard to that group.
 
 Time is shared across the page. The video, the floor, the occupancy chart and
 the *At this moment* panel all follow one playhead.
 
 ---
 
-## Simple and Detailed views
-
-The header toggle switches the whole page between two audiences, and the choice
-is remembered per browser.
-
-**Simple** (the default) is for whoever runs the shop: a plain-language "What
-happened" summary, the headline numbers, when people came in, who they were,
-and the video. No model vocabulary - no confidence scores, tracks, occupancy or
-mA - and the analyst filters are hidden (and cleared, so nothing is silently
-filtered out underneath).
-
-**Detailed** adds everything else: the filter row, the segment cross-tab, dwell
-and engagement tiers, entry edges and path types, and the Log tab with model
-confidence and the per-visitor log.
-
-Card titles and captions change with the mode, not just visibility - "Peak
-occupancy" becomes "Most at once", "Average dwell" becomes "Typical visit".
-
----
-
 ## Dashboard notes
 
 * **Filters** (gender, age, engagement tier, minimum confidence) sit in one row
-  and scope every chart, table and KPI below them, including the video panel.
+  of the Data panel and scope every chart, table and KPI below them, including
+  the video panel. Switching to Insights clears them.
 * **Theme** follows the OS by default; the toggle overrides it and is
   remembered per browser.
 * **Charts** are hand-drawn SVG, with no chart library. The two 3D scenes use

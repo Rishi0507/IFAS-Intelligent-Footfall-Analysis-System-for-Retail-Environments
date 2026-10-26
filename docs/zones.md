@@ -1,5 +1,9 @@
 # Zone occupancy (RQ4)
 
+> The workbench no longer shows zones: they are computed with every run and kept in
+> `analytics.json` (`zones`), and everything below about the analysis still holds. The
+> Zones tab described here has been removed from the dashboard.
+
 Which seats, tables or areas are taken, for how long, and which will free up
 next, from one fixed camera. This is the restaurant-style view: every table
 outlined, green when free and red with a running timer when taken, a status
