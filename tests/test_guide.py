@@ -78,6 +78,15 @@ def test_a_seated_room_with_split_tracks_distrusts_arrivals_and_says_why():
     assert not any("busiest" in x for x in s["arrivals"]["do"])
     assert any("distrust totals" in x for x in s["trust"]["do"])
     assert g["sections"].index(s["seats"]) < g["sections"].index(s["arrivals"])   # seats first when seated
+    # the opening sentence avoids the inflated head count
+    assert g["headline"] == "About 38 people were in view at any moment, 45 at the busiest; 49 of 50 seats were taken at the end."
+    assert "231" not in g["headline"]
+
+
+def test_a_shop_opens_on_its_head_count():
+    g = shop_guide(doc(visitors=60, avg=4.0))
+    assert g["headline"] == "60 people came by in 10 minutes; about 4 people were in view at any moment."
+    assert shop_guide(doc(visitors=0, avg=0.0))["headline"].endswith("usually nobody was in view.")
 
 
 def test_full_seats_and_long_waits_get_concrete_suggestions():
@@ -121,3 +130,29 @@ def test_tiny_samples_and_cut_off_stays_are_called_out_not_overread():
     assert s["stopping"]["confidence"] == "unreliable" and "Too short to tell" in s["stopping"]["headline"]
     assert s["where"]["confidence"] == "unreliable" and "3 in the middle" in s["where"]["headline"]
     assert "%" not in s["who"]["headline"] and s["who"]["confidence"] == "unreliable"
+
+
+def test_every_claim_is_short_and_names_its_evidence():
+    d = doc(visitors=231, dwell=200.0, peak=45, avg=38.0, zones=seats(util=0.7, n=50))
+    d["zones"].update({"sample_sec": 0.2, "duration_sec": 600.0})
+    g = shop_guide(d)
+    assert g["schema"] == 2 and g["setting"]["label"]
+    s = by_id(g)
+    for sec in g["sections"]:
+        if sec["id"] != "trust":
+            assert sec["stat"]["value"] and sec["tip"] and sec["brief"]
+            assert len(sec["tip"]) <= 80 and len(sec["brief"]) <= 90
+    assert s["seats"]["stat"]["value"] == "49/50"
+    assert s["seats"]["proof"] == {"kind": "frame", "t": 599.8, "show": "zones",
+                                   "caption": "The last moment of the recording, seats coloured by state"}
+    assert s["arrivals"]["proof"]["kind"] == "handoffs"         # unreliable: show why
+    assert s["who"]["proof"]["kind"] == "people" and len(s["who"]["proof"]["tracks"]) <= 10
+
+
+def test_the_busiest_moment_is_the_one_the_peak_was_counted_at():
+    # 3 people overlap from 30 s; the bins agree, so the proof shows that instant
+    d = doc(visitors=3, duration=120.0, peak=3, avg=2.0, first=lambda i: 10.0 * i + 10.0, dwell=50.0)
+    assert by_id(shop_guide(d))["busy"]["proof"]["t"] == 30.0
+    # bins and tracks disagree (an older run): fall back to the busiest bin
+    d = doc(peak=8)
+    assert by_id(shop_guide(d))["busy"]["proof"]["t"] == 120.0

@@ -5,8 +5,8 @@
    camera overlay, the status board, the timeline and the "next to free up"
    card always agree with each other and with the other tabs.
 
-   The overlay is a canvas over the recording. A zone is green while free and
-   red while taken, with a timer; the zone taken longest gets pulsing rings,
+   The overlay is a canvas over the recording. Only taken zones are drawn,
+   red with a timer (a free one shows while pointed at or followed); the zone taken longest gets pulsing rings,
    because it is the best single guess for the next one to free up (the
    Validity card says how good a guess that was in this recording).
 
@@ -180,8 +180,11 @@ export function createZonesView({ $, $$, C, esc, getState, seek, setPlayhead, on
     if (edit) return drawEditor(col);
     const b = block();
     if (!b) return;
-    const st = statusAt(t, b);
-    const nxt = nextFree(st);
+    const all = statusAt(t, b);
+    const nxt = nextFree(all);
+    // Free seats are left off the picture: what is taken, and for how long,
+    // is what the overlay is for. One pointed at or followed still shows.
+    const st = all.filter((s) => s.taken || s.z.kind === 'queue' || hover === s.z.id || focus === s.z.id);
     const pulse = (performance.now() % 1800) / 1800;
     st.forEach((s) => {
       const { z } = s;

@@ -14,7 +14,6 @@ import * as C from './charts.js';
 import { hasWebGL, cssVar } from './three-kit.js';
 import { createFloor } from './stage3d.js';
 import { createSkyline } from './skyline3d.js';
-import { createZonesView } from './zones.js';
 import { createGuideView } from './guide.js';
 
 const { fmt } = C;
@@ -22,7 +21,7 @@ const { fmt } = C;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-const VIEWS = ['overview', 'guide', 'zones', 'floor', 'people', 'trends', 'video', 'log'];
+const VIEWS = ['overview', 'guide', 'floor', 'people', 'trends', 'video', 'log'];
 const GENDERS = ['female', 'male'];
 const AGES = ['Age16-30', 'Age31-45', 'Age46-60', 'AgeAbove61'];
 const TIERS = ['Passing', 'Glancing', 'Browsing', 'Engaged', 'Dwelling'];
@@ -43,7 +42,6 @@ const ICON = {
   people: '<svg viewBox="0 0 18 18"><circle cx="9" cy="5.6" r="2.8"/><path d="M3.4 15.6c.5-3.1 2.7-4.9 5.6-4.9s5.1 1.8 5.6 4.9"/></svg>',
   stay: '<svg viewBox="0 0 18 18"><path d="M5 2.4h8M5 15.6h8M5.8 2.4c0 3.4 3.2 4 3.2 6.6s-3.2 3.2-3.2 6.6M12.2 2.4c0 3.4-3.2 4-3.2 6.6s3.2 3.2 3.2 6.6"/></svg>',
   spot: '<svg viewBox="0 0 18 18"><path d="M9 16.2s5-4.5 5-8.4a5 5 0 0 0-10 0c0 3.9 5 8.4 5 8.4z"/><circle cx="9" cy="7.7" r="1.8"/></svg>',
-  seat: '<svg viewBox="0 0 18 18"><rect x="2.4" y="3" width="13.2" height="6" rx="1.6"/><path d="M4.6 9v6M13.4 9v6M2.4 12.2h13.2"/></svg>',
 };
 
 const state = {
@@ -60,8 +58,7 @@ const state = {
 
 let floor = null;       // 3D floor stage, or null when WebGL is unavailable
 let skyline = null;     // created the first time the People tab opens
-let zonesView = null;   // the Zones tab
-let guideView = null;   // the Guide tab
+let guideView = null;   // the Insights panel
 
 /* ------------------------------------------------------------- loading */
 async function loadRuns(select) {
@@ -142,12 +139,10 @@ async function loadRun(id) {
   label.href = `label.html?run=${encodeURIComponent(id)}`;
   const hasFrame = !!(run?.has_poster || run?.has_video);
   $('#sw-frame').hidden = !(floor && hasFrame);
-  $('#sw-zones').hidden = !(floor && doc.zones);
   if (!hasFrame) { $('#chk-frame').checked = false; floor?.setLayers({ frame: false }); }
 
   setupVideo(id, doc);
   buildScrubBars(doc);
-  zonesView?.setRun(id, doc, run);
   guideView?.setRun(id, doc);
   renderAll();
   renderTrends();
@@ -318,8 +313,6 @@ function renderAll() {
   wireTableToggles();
 }
 
-const simple = () => document.body.dataset.mode === 'simple';
-
 function spokenDuration(sec) {
   if (sec < 90) return plural(Math.round(sec), 'second');
   if (sec < 3600) {
@@ -346,7 +339,10 @@ function renderHero(doc, rows) {
   if (when && !Number.isNaN(+when)) {
     meta.push(`Recorded ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} at ${when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`);
   }
-  if (!simple()) meta.push(`${m.width}×${m.height} at ${fmt.num(m.fps, 0)} fps`);
+  // The Insights header names the place and camera, not the file, and no specs.
+  const where = [m.site, m.camera].filter(Boolean).map(esc).join(' · ');
+  $('#ins-meta').innerHTML = [where || esc(m.source), ...meta.slice(1)].map((s) => `<span>${s}</span>`).join('');
+  meta.push(`${m.width}×${m.height} at ${fmt.num(m.fps, 0)} fps`);
   // A long file name is cut to two lines; the full name stays on hover.
   $('#ov-sub').innerHTML = meta.map((s, i) => `<span${i ? '' : ` title="${s}"`}>${s}</span>`).join('');
 
@@ -370,7 +366,6 @@ function renderHero(doc, rows) {
   const lingered = rows.filter((r) => r.dwell_sec >= 30).length;
   const women = g.female >= g.male;
 
-  const zl = zoneLine(doc);
   const lines = [
     [ICON.clock, (busiest.entries
       ? `Busiest at <b>${fmt.clock(busiest.t)}</b>, when ${plural(busiest.entries, 'person', 'people')} arrived.`
@@ -403,8 +398,6 @@ function renderHero(doc, rows) {
   if (aged.length && mean(aged.map((r) => r.age_conf)) < 0.5) {
     lines[1][1] += ' The age model was unsure here, so treat the age as a rough guess.';
   }
-  // Drawn zones say more than the frame's left, centre and right thirds.
-  if (zl) lines.splice(3, 1, [ICON.seat, zl]);
   host.innerHTML = lines.map(([ico, text]) => `<li>${ico}<span>${text}</span></li>`).join('');
 }
 
@@ -417,28 +410,8 @@ function arrivalBins(bins, rows) {
   return { bins: bins.map((b, i) => (i ? b : { ...b, entries: Math.max(0, b.entries - already) })), already };
 }
 
-/* One sentence about seats and tables, when the run has zones. */
-function zoneLine(doc) {
-  const z = doc.zones;
-  if (!z || !z.summary.seats_tables) return null;
-  const s = z.summary;
-  const kind = z.zones.every((x) => x.kind === 'seat') ? 'seats' : z.zones.every((x) => x.kind === 'table') ? 'tables' : 'zones';
-  const last = z.next_free?.at_end?.[0];
-  return `<b>${fmt.int(s.occupied_at_end)} of ${fmt.int(s.seats_tables)}</b> ${kind} were taken at the end, `
-    + `each taken ${fmt.pct(s.mean_utilization * 100, 0)} of the time on average`
-    + (last ? `; <b>${esc(last.zone)}</b> was held longest.` : '.');
-}
-
 function renderOverview(doc, rows) {
   const m = doc.meta;
-  const plain = simple();
-  $('#occ-title').textContent = plain ? 'How busy it was' : 'Occupancy';
-  $('#occ-sub').textContent = plain
-    ? 'How many people were in view at the same time.'
-    : 'People in frame at the same moment. Click the chart to jump there in the recording.';
-  $('#peak-label').textContent = plain ? 'Most at once' : 'Peak occupancy';
-  $('#dwell-label').textContent = plain ? 'Average visit' : 'Average dwell';
-
   const bins = timeline(rows, doc);
   const occ = occupancy(rows, doc);
   const dwells = rows.map((r) => r.dwell_sec);
@@ -472,7 +445,7 @@ function renderOverview(doc, rows) {
     { label: 'Men', value: g.male, color: COLOR.male },
   ]);
   $('#k-gender-note').textContent = `${plural(g.female, 'woman', 'women')} and ${plural(g.male, 'man', 'men')}`
-    + (!plain && g.female && g.male ? `, ${fmt.num(g.female / g.male, 2)} women for each man` : '');
+    + (g.female && g.male ? `, ${fmt.num(g.female / g.male, 2)} women for each man` : '');
 
   const hasAge = rows.some((r) => r.age);
   let best = { n: -1 };
@@ -519,33 +492,9 @@ function renderOverview(doc, rows) {
 
 function renderDemographics(doc, rows) {
   const a = countBy(rows, 'age', AGES);
-  const plain = simple();
-
-  // The same panels, described for whoever is reading them.
-  const copy = plain ? {
-    demoTitle: 'Who came in', demoSub: 'The mix of people the camera saw.',
-    ageTitle: 'Age groups', ageSub: 'Roughly how old your visitors were.',
-    agTitle: 'Age by gender', agSub: 'Which groups visit you most.',
-  } : {
-    demoTitle: 'Demographics', demoSub: 'What the age and gender models found, set against each other.',
-    ageTitle: 'Age mix', ageSub: 'The four PETA age buckets. Click a bar to filter the whole dashboard.',
-    agTitle: 'Age by gender', agSub: 'Head count for each age bucket, women beside men.',
-  };
-  $('#demo-title').textContent = copy.demoTitle;
-  $('#demo-sub').textContent = copy.demoSub;
-  $('#agemix-title').textContent = copy.ageTitle;
-  $('#agemix-sub').textContent = copy.ageSub;
-  $('#agegender-title').textContent = copy.agTitle;
-  $('#agegender-sub').textContent = copy.agSub;
-  $('#video-sub').textContent = plain
-    ? 'Your footage, with a box around each person the system found.'
-    : 'The annotated output. Box colours match the charts.';
-
   const noAge = rows.length && !rows.some((r) => r.age);
-  const notice = plain
-    ? '<p class="empty">Ages were not measured for this video, so there is no age breakdown yet.</p>'
-    : '<p class="empty">No age model ran for this video, so there is no age breakdown. '
-      + 'Point <code>--age-bundle</code> at a trained bundle to fill this in.</p>';
+  const notice = '<p class="empty">No age model ran for this video, so there is no age breakdown. '
+    + 'Point <code>--age-bundle</code> at a trained bundle to fill this in.</p>';
   if (noAge) {
     $('#c-age').innerHTML = notice;
     $('#c-agegender').innerHTML = notice;
@@ -559,7 +508,7 @@ function renderDemographics(doc, rows) {
       hint: 'Visitors',
     })),
     height: 190,
-    onClick: plain ? null : (d) => {
+    onClick: (d) => {
       const set = state.filters.age;
       set.has(d.key) ? set.delete(d.key) : set.add(d.key);
       syncChips(); renderAll();
@@ -1072,11 +1021,10 @@ function setupVideo(id, doc) {
 
 /* One clock for the whole page: the video, the 3D floor, the occupancy chart
    and the "at this moment" panel all read state.playhead. */
-function setPlayhead(t, { fromVideo = false, fromStage = false, fromZones = false } = {}) {
+function setPlayhead(t, { fromVideo = false, fromStage = false } = {}) {
   const dur = state.doc?.meta.duration_sec || 0;
   state.playhead = Math.max(0, Math.min(dur, t));
   if (!fromStage) floor?.setTime(state.playhead);
-  zonesView?.tick(state.playhead, { fromZones });
   if (!fromVideo && state.video && state.video.paused && Number.isFinite(state.video.duration)) {
     state.video.currentTime = Math.min(state.playhead, state.video.duration);
   }
@@ -1222,6 +1170,7 @@ function wireStage() {
       floor = null;
     }
   }
+  floor?.setLayers({ zones: false });          // seats and tables are not shown
   if (!floor) {
     // No WebGL: the flat map carries the same data.
     $('#stage-fallback').hidden = false;
@@ -1256,7 +1205,6 @@ function wireStage() {
     if (state.doc) renderFlatMap(state.doc, filtered());
   };
   $('#chk-frame').onchange = (e) => floor?.setLayers({ frame: e.target.checked });
-  $('#chk-zones').onchange = (e) => floor?.setLayers({ zones: e.target.checked });
   $('#open-floor').onclick = () => setView('floor');
   $('#open-guide').onclick = () => setView('guide');
   el.addEventListener('pointerdown', () => $('#stage-hint').classList.add('gone'), { once: true });
@@ -1288,7 +1236,7 @@ function renderSkyline(rows) {
   const byDwell = state.skyMetric === 'dwell';
   $('#skyline-sub').textContent =
     `Each block is one group of visitors. Taller means ${byDwell ? 'they stayed longer on average' : 'more people'}.`
-    + (simple() || !skyline ? '' : ' Click a block to filter the whole dashboard.');
+    + (skyline ? ' Click a block to filter the whole dashboard.' : '');
   if (!skyline) {
     // Without WebGL the two flat charts beside this card carry the same split.
     if (!hasWebGL()) $('.skyline-card').hidden = true;
@@ -1304,7 +1252,6 @@ function ensureSkyline() {
     skyline = createSkyline($('#c-skyline'), {
       showTip: C.showTip, hideTip: C.hideTip,
       onPick: (gender, age) => {
-        if (simple()) return;                 // filters are a Detailed-view tool
         const f = state.filters;
         const same = f.gender.size === 1 && f.gender.has(gender)
           && (age === null || (f.age.size === 1 && f.age.has(age)));
@@ -1412,10 +1359,21 @@ function moveGlider(instant = false) {
 
 function setView(view, { remember = true } = {}) {
   if (!VIEWS.includes(view)) view = 'overview';
-  if (view === 'log' && simple()) view = 'overview';
   const changed = view !== state.view;
   state.view = view;
   document.body.dataset.view = view;
+  // Two panels: Insights (the guide, for whoever runs the place) and Data
+  // (every chart and table). Which one shows follows the view.
+  const panel = view === 'guide' ? 'insights' : 'data';
+  if (panel === 'data') state.lastDataView = view;
+  if (document.body.dataset.panel !== panel) {
+    document.body.dataset.panel = panel;
+    $('#btn-insights').setAttribute('aria-pressed', String(panel === 'insights'));
+    $('#btn-data').setAttribute('aria-pressed', String(panel === 'data'));
+    try { localStorage.setItem('ifas-panel', panel); } catch { /* storage blocked */ }
+    // Filters live in the Data panel; the Insights panel always describes everyone.
+    if (panel === 'insights' && state.doc && filtering()) { clearFilters(); renderAll(); }
+  }
   $$('.view').forEach((v) => { v.hidden = v.id !== `view-${view}`; });
   $$('#tabs [role="tab"]').forEach((b) => {
     const on = b.dataset.view === view;
@@ -1424,7 +1382,6 @@ function setView(view, { remember = true } = {}) {
   });
   moveGlider();
   placeStage(view);
-  zonesView?.show(view === 'zones');
   if (view === 'people') ensureSkyline();
   // Charts mounted while their tab was hidden had no width to draw into.
   $$(`#view-${view} [id^="c-"], #view-${view} .spark`).forEach((el) => el.__render?.());
@@ -1438,7 +1395,7 @@ function setView(view, { remember = true } = {}) {
 
 function wireTabs() {
   const tabs = $$('#tabs [role="tab"]');
-  const visible = () => tabs.filter((b) => !(b.hasAttribute('data-adv') && simple()));
+  const visible = () => (document.body.dataset.panel === 'data' ? tabs : []);
   tabs.forEach((b) => { b.onclick = () => setView(b.dataset.view); });
   $('#tabs').addEventListener('keydown', (e) => {
     const list = visible();
@@ -1451,7 +1408,7 @@ function wireTabs() {
     b.focus();
     setView(b.dataset.view);
   });
-  // 1 to 8 jump straight to a tab, unless the user is typing somewhere.
+  // 1 to 6 jump straight to a Data tab, unless the user is typing somewhere.
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target instanceof Element && e.target.closest('input, select, textarea, dialog')) return;
@@ -1481,24 +1438,20 @@ function wireRunPicker() {
   pop.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') place(); });
 }
 
-function setMode(mode) {
-  document.body.dataset.mode = mode;
-  try { localStorage.setItem('ifas-mode', mode); } catch { /* storage blocked */ }
-  $('#btn-simple').setAttribute('aria-pressed', String(mode === 'simple'));
-  $('#btn-full').setAttribute('aria-pressed', String(mode !== 'simple'));
-  // A hidden filter cannot be left silently applied.
-  if (mode === 'simple') clearFilters();
-  setView(state.view, { remember: false });
-  moveGlider(true);
-  if (state.doc) renderAll();
+function wirePanels() {
+  $('#btn-insights').onclick = () => setView('guide');
+  $('#btn-data').onclick = () => { setView(state.lastDataView || 'overview'); moveGlider(true); };
+  $('#ins-to-data').onclick = () => { setView('overview'); moveGlider(true); };
 }
 
-function wireMode() {
-  $('#btn-simple').onclick = () => setMode('simple');
-  $('#btn-full').onclick = () => setMode('full');
-  let saved = null;
-  try { saved = localStorage.getItem('ifas-mode'); } catch { /* storage blocked */ }
-  setMode(saved || 'simple');
+/* The view to open on: the one in the address bar, else the panel used last
+   (Insights for a first visit: the plain-language guide comes first). */
+function firstView() {
+  const asked = location.hash.slice(1);
+  if (VIEWS.includes(asked)) return asked;
+  let panel = null;
+  try { panel = localStorage.getItem('ifas-panel'); } catch { /* storage blocked */ }
+  return panel === 'data' ? 'overview' : 'guide';
 }
 
 function wireTheme() {
@@ -1533,29 +1486,16 @@ function init() {
   };
   $('#btn-csv').onclick = exportCsv;
   wireStage();
-  zonesView = createZonesView({
-    $, $$, C, esc,
-    getState: () => state,
-    seek,
-    setPlayhead,
-    onAnalysis: (block) => {
-      if (state.doc) state.doc.zones = block;
-      const run = state.runs.find((r) => r.id === state.runId);
-      if (run) run.has_zones = true;
-      $('#sw-zones').hidden = !floor;
-      renderHero(state.doc, filtered());
-      renderStage(state.doc, filtered());       // the floor's zone tiles follow the new zones
-      if (state.doc) delete state.doc.guide;    // written again by the server with the new zones
-      guideView?.setRun(state.runId, state.doc);
-    },
+  // "Play from here" on a proof opens the recording at that moment.
+  guideView = createGuideView($('#guide-root'), {
+    onSeek: (t) => { setView('video'); moveGlider(true); seek(t); },
   });
-  guideView = createGuideView($('#guide-root'));
   wireTabs();
   wireRunPicker();
-  wireMode();
+  wirePanels();
   wireTheme();
   wireProcess();
-  setView(location.hash.slice(1) || 'overview', { remember: false });
+  setView(firstView(), { remember: false });
   moveGlider(true);
   loadRuns();
 }

@@ -100,7 +100,160 @@ def get_guide(run_id: str):
     if not path.exists():
         raise HTTPException(404, "No such run.")
     doc = json.loads(path.read_text(encoding="utf-8"))
-    return doc.get("guide") or shop_guide(doc)
+    from src.inference.guide import SCHEMA
+    stored = doc.get("guide")
+    return stored if stored and stored.get("schema", 1) >= SCHEMA else shop_guide(doc)
+
+
+# ------------------------------------------------------------------ evidence
+_json_cache: dict[str, tuple[float, object]] = {}
+
+
+def _cached(path: Path, load):
+    """A parsed file, kept until it changes: the guide asks for several
+    moments of the same run in a row, and track_boxes.json is megabytes."""
+    key, mtime = str(path), path.stat().st_mtime
+    hit = _json_cache.get(key)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    value = load(path)
+    with _lock:
+        if len(_json_cache) > 8:
+            _json_cache.clear()
+        _json_cache[key] = (mtime, value)
+    return value
+
+
+def _read_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_jsonl(path: Path):
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+@app.get("/api/runs/{run_id}/moment")
+def get_moment(run_id: str, t: float):
+    """Everyone counted and every zone's state at t seconds: the evidence
+    drawn over a guide's still (src/inference/proof.py)."""
+    from src.inference.proof import moment
+    d = _run_dir(run_id)
+    if not (d / "track_boxes.json").exists():
+        raise HTTPException(404, "This run has no track boxes.")
+    doc = _cached(d / "analytics.json", _read_json)
+    return moment(doc, _cached(d / "track_boxes.json", _read_json), t)
+
+
+@app.get("/api/runs/{run_id}/still")
+def get_still(run_id: str, t: float, w: int = 960):
+    """The clean frame at t seconds, w pixels wide, as JPEG."""
+    from src.inference.proof import STILL_WIDTHS, still
+    d = _run_dir(run_id)
+    video = _video(d)
+    if w not in STILL_WIDTHS:
+        raise HTTPException(400, f"w must be one of {STILL_WIDTHS}.")
+    try:
+        data = still(video, max(0.0, t), w, d / "stills" / video.stem)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return Response(data, media_type="image/jpeg", headers={"cache-control": "max-age=86400"})
+
+
+def _video(d: Path) -> Path:
+    video = next((d / n for n in ("clean.mp4", "video.mp4") if (d / n).exists()), None)
+    if video is None:
+        raise HTTPException(404, "This run has no video.")
+    return video
+
+
+@app.get("/api/runs/{run_id}/handoffs")
+def get_handoffs(run_id: str):
+    """Tracks that ended and began again in the same spot: how many, and the
+    clearest examples with a picture of each end (src/inference/proof.py)."""
+    from src.inference.proof import handoffs
+    d = _run_dir(run_id)
+    if not (d / "track_boxes.json").exists():
+        raise HTTPException(404, "This run has no track boxes.")
+    found = handoffs(_cached(d / "track_boxes.json", _read_json))
+    snap = f"/api/runs/{quote(run_id)}/snap"
+    examples = sorted(found, key=lambda h: -h["overlap"])[:3]
+    for h in examples:
+        h["a_url"] = f"{snap}?t={h['a_t']}&box={','.join(map(str, h['a_box']))}"
+        h["b_url"] = f"{snap}?t={h['b_t']}&box={','.join(map(str, h['b_box']))}"
+    return {"count": len(found), "max_gap_sec": 30.0, "examples": examples}
+
+
+@app.get("/api/runs/{run_id}/snap")
+def get_snap(run_id: str, t: float, box: str):
+    """One person at t seconds, cut from the clean frame: box is x1,y1,x2,y2
+    in the pipeline's frame coordinates."""
+    from src.inference.proof import snap
+    d = _run_dir(run_id)
+    try:
+        x1, y1, x2, y2 = (int(v) for v in box.split(","))
+    except ValueError:
+        raise HTTPException(400, "box must be four whole numbers.")
+    doc = _cached(d / "analytics.json", _read_json)
+    W, H = doc["meta"].get("width") or 1920, doc["meta"].get("height") or 1080
+    if not (0 <= x1 < x2 <= W and 0 <= y1 < y2 <= H):
+        raise HTTPException(400, "box must lie inside the frame.")
+    video = _video(d)
+    try:
+        data = snap(video, max(0.0, t), (x1, y1, x2, y2), W, d / "stills" / f"{video.stem}-snaps")
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return Response(data, media_type="image/jpeg", headers={"cache-control": "max-age=86400"})
+
+
+def warm_evidence(d: Path):
+    """Make every frame and crop a run's Insights will ask for, ahead of time,
+    so the panel opens with its proofs already on disk."""
+    from src.inference.guide import SCHEMA, shop_guide
+    from src.inference.proof import handoffs, snap, still
+    doc = _cached(d / "analytics.json", _read_json)
+    g = doc.get("guide") if (doc.get("guide") or {}).get("schema", 1) >= SCHEMA else shop_guide(doc)
+    video = _video(d)
+    for s in g["sections"]:
+        p = s.get("proof") or {}
+        if p.get("kind") in ("frame", "heat") and p.get("t") is not None:
+            for w in (960, 1600):
+                still(video, max(0.0, p["t"]), w, d / "stills" / video.stem)
+        elif p.get("kind") == "handoffs" and (d / "track_boxes.json").exists():
+            W = doc["meta"].get("width") or 1920
+            for h in sorted(handoffs(_cached(d / "track_boxes.json", _read_json)), key=lambda h: -h["overlap"])[:3]:
+                for t, box in ((h["a_t"], h["a_box"]), (h["b_t"], h["b_box"])):
+                    snap(video, t, tuple(box), W, d / "stills" / f"{video.stem}-snaps")
+
+
+def _warm_all():
+    import cv2  # noqa: F401  (the first import is the slow part of a first frame)
+    for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if (d / "analytics.json").exists():
+            try:
+                warm_evidence(d)
+            except Exception:       # a run without video or boxes simply has fewer proofs
+                pass
+
+
+@app.on_event("startup")
+def _warm_on_start():
+    threading.Thread(target=_warm_all, daemon=True).start()
+
+
+@app.get("/api/runs/{run_id}/portraits")
+def get_portraits(run_id: str, tracks: str):
+    """The clearest crop of each listed person: {track: {url, t}}."""
+    from src.inference.proof import portraits
+    d = _run_dir(run_id)
+    if not (d / "crops.jsonl").exists():
+        raise HTTPException(404, "This run has no exported crops.")
+    try:
+        ids = [int(x) for x in tracks.split(",") if x.strip()][:60]
+    except ValueError:
+        raise HTTPException(400, "tracks must be comma-separated numbers.")
+    found = portraits(_cached(d / "crops.jsonl", _read_jsonl), ids)
+    return {str(k): {"url": f"/api/runs/{quote(run_id)}/{v['crop']}", "t": v["t"]} for k, v in found.items()}
 
 
 @app.get("/api/runs/{run_id}/video.mp4")
