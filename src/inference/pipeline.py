@@ -1,7 +1,11 @@
 """Video -> annotated MP4 + analytics.json.
 
     python -m src.inference.pipeline --video store.mp4 --out outputs/runs/store \
-        --gender-repo abhshkp/footfall-analysis-vit-stage2 --age-bundle abhshkp/footfall-analysis-age-svm
+        --gender-repo abhshkp/footfall-analysis-vit-stage2
+
+By default gender is the fine-tuned ViT averaged with CLIP zero-shot and age is
+CLIP zero-shot (`--attributes ensemble`); `--attributes vit --age-bundle ...`
+brings back the original ViT and colour/texture SVMs.
 
 Detection (YOLO) runs on every sampled frame; the two classifiers run on each
 person crop; an IoU tracker turns boxes into people; `analytics.build_analytics`
@@ -33,6 +37,96 @@ def _device(pref="auto"):
         return "cuda" if torch.cuda.is_available() else "cpu"
     except Exception:
         return "cpu"
+
+
+def load_classifiers(gender_repo=None, gender_ckpt=None, age_bundle=None, attributes=None,
+                     clip_heads=None, device="cpu", cache_dir=None, say=None,
+                     gender_model=None, age_model=None):
+    """(gender_model, age_model, clip_meta) for the chosen `attributes`
+    ("vit", "clip" or "ensemble"); see process_video. Models passed in are
+    kept. Used by the pipeline and by relabel.py, so both classify alike."""
+    say = say or (lambda **kw: None)
+    # Shared cache, not the run directory: a 340 MB checkpoint should be
+    # downloaded once, not once per run.
+    cache = Path(cache_dir) if cache_dir else Path(__file__).resolve().parents[2] / "models" / "hf"
+    if gender_model is None and gender_repo:
+        from .models import GenderModel
+        local = cache / gender_repo.replace("/", "__")
+        if (local / "pytorch_model.bin").exists() and (local / "config.json").exists():
+            # Already downloaded: load it without touching the network.
+            gender_model = GenderModel(local, device=device)
+            gender_model.source = gender_repo
+        else:
+            say(stage="downloading checkpoint", pct=0.0)
+            gender_model = GenderModel.from_hub(gender_repo, local, device=device)
+    elif gender_model is None and gender_ckpt:
+        from .models import GenderModel
+        gender_model = GenderModel(gender_ckpt, device=device)
+    if age_model is None and age_bundle and attributes not in ("clip", "ensemble"):
+        # (with CLIP answering age, the SVM bundle would be loaded for nothing)
+        from .models import AgeModel
+        if Path(age_bundle).exists():
+            age_model = AgeModel(age_bundle)
+        else:
+            # Not a local path, so a Hub repo id, cached like the gender checkpoint.
+            local = cache / str(age_bundle).replace("/", "__")
+            if (local / AgeModel.HUB_FILE).exists():
+                age_model = AgeModel(local / AgeModel.HUB_FILE)
+                age_model.source = age_bundle
+            else:
+                say(stage="downloading age model", pct=0.0)
+                age_model = AgeModel.from_hub(age_bundle, local)
+    if attributes not in (None, "vit", "clip", "ensemble"):
+        raise ValueError("attributes must be 'vit', 'clip' or 'ensemble'")
+    clip_meta = None
+    if attributes in ("clip", "ensemble"):
+        from .clip_attrs import Average, load_clip_attributes
+        both = load_clip_attributes(clip_heads or "zero-shot", device=device, say=say)
+        clip_meta = {"kind": both.kind, **both.meta}
+        # Gender: the fine-tuned ViT and CLIP each win on one kind of footage
+        # and their average wins on both. Age: CLIP alone (the SVMs are at
+        # chance on held-out identities).
+        if attributes == "ensemble" and gender_model is not None:
+            gender_model = Average(gender_model, both.gender)
+        else:
+            gender_model = both.gender
+        age_model = both.age
+    if gender_model is None and age_model is None:
+        raise ValueError("Nothing to classify: pass a gender checkpoint and/or an age bundle.")
+    return gender_model, age_model, clip_meta
+
+
+def make_model_card(config, attributes, gender_model, age_model, clip_meta):
+    """What classified the people of a run, for analytics.json. With CLIP in
+    use, also sets config's gender_model and age_model to what really ran."""
+    model_card = {
+        "gender": {"family": "ViT-B/16 fine-tuned (2-stage)", "labels": ["female", "male"],
+                   "source": config["gender_model"]},
+        "age": {"family": "region colour + LBP histograms, one-vs-rest SVM per bucket",
+                "labels": ["Age16-30", "Age31-45", "Age46-60", "AgeAbove61"],
+                "reported_avg_mA": 0.835, "source": config["age_model"]},
+    }
+    if clip_meta is not None:
+        from .clip_attrs import Average
+        # Measured by scripts/research/attribute_study.py, which writes this
+        # summary; the guide quotes it.
+        summary = Path(__file__).with_name("assets") / "attribute_study.json"
+        studied = json.loads(summary.read_text(encoding="utf-8")) if summary.exists() else {}
+        g_kind = "ensemble" if attributes == "ensemble" and isinstance(gender_model, Average) else "clip"
+        studied = {"gender": (studied.get("gender") or {}).get(g_kind),
+                   "age": (studied.get("age") or {}).get("clip")}
+        model_card = {
+            "gender": {"family": ("fine-tuned ViT-B/16 averaged with CLIP ViT-B/32 zero-shot"
+                                  if g_kind == "ensemble" else "CLIP ViT-B/32 zero-shot"),
+                       "labels": ["female", "male"], "source": getattr(gender_model, "source", None),
+                       "test": studied["gender"]},
+            "age": {"family": "CLIP ViT-B/32 zero-shot", "labels": ["Age16-30", "Age31-45", "Age46-60", "AgeAbove61"],
+                    "source": getattr(age_model, "source", None), "test": studied["age"]},
+            "clip": clip_meta,
+        }
+        config["gender_model"] = model_card["gender"]["source"]
+        config["age_model"] = model_card["age"]["source"]
+    return model_card
 
 
 def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
@@ -127,53 +221,10 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         from ultralytics import YOLO
         detector = YOLO(detector_weights)
 
-    # Shared cache, not the run directory: a 340 MB checkpoint should be
-    # downloaded once, not once per run.
-    cache = Path(cache_dir) if cache_dir else Path(__file__).resolve().parents[2] / "models" / "hf"
-    if gender_model is None and gender_repo:
-        from .models import GenderModel
-        local = cache / gender_repo.replace("/", "__")
-        if (local / "pytorch_model.bin").exists() and (local / "config.json").exists():
-            # Already downloaded: load it without touching the network.
-            gender_model = GenderModel(local, device=device)
-            gender_model.source = gender_repo
-        else:
-            say(stage="downloading checkpoint", pct=0.0)
-            gender_model = GenderModel.from_hub(gender_repo, local, device=device)
-    elif gender_model is None and gender_ckpt:
-        from .models import GenderModel
-        gender_model = GenderModel(gender_ckpt, device=device)
-    if age_model is None and age_bundle and attributes not in ("clip", "ensemble"):
-        # (with CLIP answering age, the SVM bundle would be loaded for nothing)
-        from .models import AgeModel
-        if Path(age_bundle).exists():
-            age_model = AgeModel(age_bundle)
-        else:
-            # Not a local path, so a Hub repo id, cached like the gender checkpoint.
-            local = cache / str(age_bundle).replace("/", "__")
-            if (local / AgeModel.HUB_FILE).exists():
-                age_model = AgeModel(local / AgeModel.HUB_FILE)
-                age_model.source = age_bundle
-            else:
-                say(stage="downloading age model", pct=0.0)
-                age_model = AgeModel.from_hub(age_bundle, local)
-    if attributes not in (None, "vit", "clip", "ensemble"):
-        raise ValueError("attributes must be 'vit', 'clip' or 'ensemble'")
-    clip_meta = None
-    if attributes in ("clip", "ensemble"):
-        from .clip_attrs import Average, load_clip_attributes
-        both = load_clip_attributes(clip_heads or "zero-shot", device=device, say=say)
-        clip_meta = {"kind": both.kind, **both.meta}
-        # Gender: the fine-tuned ViT and CLIP each win on one kind of footage
-        # and their average wins on both. Age: CLIP alone (the SVMs are at
-        # chance on held-out identities).
-        if attributes == "ensemble" and gender_model is not None:
-            gender_model = Average(gender_model, both.gender)
-        else:
-            gender_model = both.gender
-        age_model = both.age
-    if gender_model is None and age_model is None:
-        raise ValueError("Nothing to classify: pass a gender checkpoint and/or an age bundle.")
+    gender_model, age_model, clip_meta = load_classifiers(
+        gender_repo=gender_repo, gender_ckpt=gender_ckpt, age_bundle=age_bundle, attributes=attributes,
+        clip_heads=clip_heads, device=device, cache_dir=cache_dir, say=say,
+        gender_model=gender_model, age_model=age_model)
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -417,32 +468,7 @@ def process_video(video_path, out_dir, gender_ckpt=None, gender_repo=None,
         "gender_model": gender_repo or (str(gender_ckpt) if gender_ckpt else None),
         "age_model": str(age_bundle) if age_bundle else None,
     }
-    model_card = {
-        "gender": {"family": "ViT-B/16 fine-tuned (2-stage)", "labels": ["female", "male"],
-                   "source": config["gender_model"]},
-        "age": {"family": "region colour + LBP histograms, one-vs-rest SVM per bucket",
-                "labels": ["Age16-30", "Age31-45", "Age46-60", "AgeAbove61"],
-                "reported_avg_mA": 0.835, "source": config["age_model"]},
-    }
-    if clip_meta is not None:
-        # Measured by scripts/research/attribute_study.py, which writes this
-        # summary; the guide quotes it.
-        summary = Path(__file__).with_name("assets") / "attribute_study.json"
-        studied = json.loads(summary.read_text(encoding="utf-8")) if summary.exists() else {}
-        g_kind = "ensemble" if attributes == "ensemble" and isinstance(gender_model, Average) else "clip"
-        studied = {"gender": (studied.get("gender") or {}).get(g_kind),
-                   "age": (studied.get("age") or {}).get("clip")}
-        model_card = {
-            "gender": {"family": ("fine-tuned ViT-B/16 averaged with CLIP ViT-B/32 zero-shot"
-                                  if g_kind == "ensemble" else "CLIP ViT-B/32 zero-shot"),
-                       "labels": ["female", "male"], "source": getattr(gender_model, "source", None),
-                       "test": studied["gender"]},
-            "age": {"family": "CLIP ViT-B/32 zero-shot", "labels": ["Age16-30", "Age31-45", "Age46-60", "AgeAbove61"],
-                    "source": getattr(age_model, "source", None), "test": studied["age"]},
-            "clip": clip_meta,
-        }
-        config["gender_model"] = model_card["gender"]["source"]
-        config["age_model"] = model_card["age"]["source"]
+    model_card = make_model_card(config, attributes, gender_model, age_model, clip_meta)
 
     people = tracker.close()
     # Occupancy is people present, counted once everything is known: someone
